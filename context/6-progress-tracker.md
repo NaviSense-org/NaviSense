@@ -46,10 +46,10 @@
 - [ ] TODO — 10-min soak on Redmi A3 < 150 MB PSS (requires physical device)
 
 ### Unit 4 — ML Kit `SpatialSceneSummary`
-- [ ] TODO — Spatial math + tests (direction/distance boundaries)
-- [ ] TODO — Three detectors, sequential, label fusion, OCR filtering
-- [ ] TODO — `toPromptString()` golden test
-- [ ] TODO — Stage 0 ≤ 50 ms median on Redmi A3 (logged)
+- [x] DONE — Spatial math + tests (direction/distance boundaries)
+- [x] DONE — Three detectors, sequential, label fusion, OCR filtering
+- [x] DONE — `toPromptString()` golden test
+- [ ] TODO — Stage 0 ≤ 50 ms median on Redmi A3 (logged) (requires physical device)
 
 ## Phase 3 — Edge Fallback & Voice (Nov 21–22)
 
@@ -142,3 +142,4 @@
 | 2026-11-18 | Unit 1 | Scaffolded Android-only Flutter app (`com.navisense.app`), pinned `pubspec.yaml`/`pubspec.lock` deps, configured `build.gradle.kts` (`minSdk 26`, `compileSdk 36`, `targetSdk 36`, BoM `35.2.0`, `firebase-ai-ondevice:16.0.0-beta08`), `AndroidManifest.xml`, ProGuard, `analysis_options.yaml`, `.gitignore`, `README.md`, `NaviColors`, and bootstrap `main.dart` | `dart format` clean, `flutter analyze` 0 issues, `flutter test` 1/1 green, `:app:compileDebugKotlin` & debug APK built (`sdkVersion:'26'`, `targetSdkVersion:'36'`), zero-secret & web-ban checks clean |
 | 2026-11-18 | Unit 2 | Created `navisense-hybrid`, registered `com.navisense.app` + debug SHA-256, ran `flutterfire configure`, added `NaviFailure`, `AppCheckBootstrap`, `RemoteConfigService`, `PromptTemplateNotifier`, and `ProviderScope` bootstrap in `main.dart`. CONTRACT CHANGE: `Firebase.initializeApp()` relies on Android `google-services.json` resources so committed code does not import gitignored `firebase_options.dart`. | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 13/13 green, debug APK built with `google-services.json` active (`-Ptarget-platform=android-arm`), zero-secret & web-ban checks clean |
 | 2026-11-18 | Unit 3 | Added `Clock`, native `MainActivity.kt` (`compressJpeg`, `getDeviceMemoryClass`, `openAppSettings`), `CameraService` + `FrameThrottler`, `CameraControllerNotifier` lifecycle observer, `CameraPreviewLayer`, and `throttle_test.dart` | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 18/18 green, `:app:compileDebugKotlin -Ptarget-platform=android-arm` `BUILD SUCCESSFUL` |
+| 2026-11-18 | Unit 4 | Added `SpatialSceneSummary`/`SpatialEntity`, `spatial_math.dart`, sequential `MlKitPerceptionService` (label fusion, `<0.65` filtering, OCR area/length filtering, 5-entity cap), `perceptionProvider`, and spatial/serialization tests | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 32/32 green, `CameraImage? _` grep clean |
