@@ -61,10 +61,10 @@
 ## Phase 4 — Hybrid AI (Nov 23–25)
 
 ### Unit 6 — Gemini Nano 4 native bridge
-- [ ] TODO — `GeminiNanoBridge.kt` getStatus/startDownload/generate + EventChannel
-- [ ] TODO — API names verified vs firebase-ai 18.2.0 / ondevice beta08 (record CONTRACT CHANGE if needed)
-- [ ] TODO — Dart `NanoBridge` typed client + mocked tests
-- [ ] TODO — Flagship returns `inferenceSource=ON_DEVICE`
+- [x] DONE — `GeminiNanoBridge.kt` getStatus/startDownload/generate + EventChannel
+- [x] DONE — API names verified vs firebase-ai 18.2.0 / ondevice beta08 (record CONTRACT CHANGE if needed)
+- [x] DONE — Dart `NanoBridge` typed client + mocked tests
+- [ ] TODO — Flagship returns `inferenceSource=ON_DEVICE` (requires physical AICore flagship)
 
 ### Unit 7 — Cloud reasoning via Server Prompt Templates
 - [ ] TODO — Templates v1/v2 created in Firebase console
@@ -144,3 +144,4 @@
 | 2026-11-18 | Unit 3 | Added `Clock`, native `MainActivity.kt` (`compressJpeg`, `getDeviceMemoryClass`, `openAppSettings`), `CameraService` + `FrameThrottler`, `CameraControllerNotifier` lifecycle observer, `CameraPreviewLayer`, and `throttle_test.dart` | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 18/18 green, `:app:compileDebugKotlin -Ptarget-platform=android-arm` `BUILD SUCCESSFUL` |
 | 2026-11-18 | Unit 4 | Added `SpatialSceneSummary`/`SpatialEntity`, `spatial_math.dart`, sequential `MlKitPerceptionService` (label fusion, `<0.65` filtering, OCR area/length filtering, 5-entity cap), `perceptionProvider`, and spatial/serialization tests | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 32/32 green, `CameraImage? _` grep clean |
 | 2026-11-18 | Unit 5 | Added `DeterministicSpatialFormatter`, `LocalTtsService`, `ConnectivityProbe` (300 ms DNS probe, 5 s cache), and golden/unit tests | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 41/41 green |
+| 2026-11-18 | Unit 6 | Added `GeminiNanoBridge.kt` (`@OptIn(PublicPreviewAPI::class)`), `MainActivity.kt` EventChannel + MethodChannel wiring, Dart `NanoBridge` + `NanoStatusNotifier` + `nanoDownloadProgressProvider`, and mocked channel tests. CONTRACT CHANGE: verified `com.google.firebase.ai.*` package paths, nullable `onDeviceExtension?`, and sealed `DownloadStatus` subtypes. | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 48/48 green, `:app:compileDebugKotlin -Ptarget-platform=android-arm` `BUILD SUCCESSFUL`, `git grep FirebaseAIOnDevice` clean |

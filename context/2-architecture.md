@@ -357,6 +357,8 @@ class GeminiNanoBridge(private val scope: CoroutineScope) :
 ```
 
 > **Verification gate (Unit 6):** The import paths and property names above (`onDeviceExtension`, `checkStatus()`, `download()`, `inferenceSource`) follow the API surface confirmed for `firebase-ai:18.2.0` + `firebase-ai-ondevice:16.0.0-beta08`. If they don't match when compiling, fix them against the official Firebase AI Logic Android reference. Do **not** fall back to the deprecated standalone `FirebaseAIOnDevice.checkStatus()` / `download()`.
+>
+> **CONTRACT CHANGE (Unit 6):** Verified at Kotlin compile time against `firebase-ai:18.2.0` + `firebase-ai-ondevice:16.0.0-beta08`: `OnDeviceConfig`, `InferenceMode`, `InferenceSource`, `OnDeviceModelStatus`, and `DownloadStatus` reside in `com.google.firebase.ai.*` (annotated `@PublicPreviewAPI`, requiring `@OptIn(PublicPreviewAPI::class)`); `model.onDeviceExtension` is nullable (`OnDeviceExtension?`); `checkStatus()` returns `OnDeviceModelStatus` (constants `AVAILABLE`/`DOWNLOADABLE`/`DOWNLOADING`/`UNAVAILABLE`); and `download()` emits sealed `DownloadStatus` subtypes (`DownloadStarted`, `DownloadInProgress`, `DownloadCompleted`, `DownloadFailed`). `GeminiNanoBridge.kt` also hosts `compressJpeg`, `getDeviceMemoryClass`, and `openAppSettings` on `"navisense/gemini_nano"`.
 
 ### Routing rule (who owns the cloud path?)
 
