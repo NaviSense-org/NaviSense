@@ -67,9 +67,9 @@
 - [ ] TODO — Flagship returns `inferenceSource=ON_DEVICE` (requires physical AICore flagship)
 
 ### Unit 7 — Cloud reasoning via Server Prompt Templates
-- [ ] TODO — Templates v1/v2 created in Firebase console
-- [ ] TODO — `CloudReasoningService` with 1500 ms timeout + failure mapping
-- [ ] TODO — Live call succeeds with App Check enforced
+- [ ] TODO — Templates v1/v2 created in Firebase console (requires Firebase Console)
+- [x] DONE — `CloudReasoningService` with 1500 ms timeout + failure mapping
+- [ ] TODO — Live call succeeds with App Check enforced (requires Firebase Console + physical device)
 
 ### Unit 8 — Cloud TTS, PCM→WAV, SHA-256 cache
 - [ ] TODO — `pcmToWav` + header byte tests
@@ -145,3 +145,4 @@
 | 2026-11-18 | Unit 4 | Added `SpatialSceneSummary`/`SpatialEntity`, `spatial_math.dart`, sequential `MlKitPerceptionService` (label fusion, `<0.65` filtering, OCR area/length filtering, 5-entity cap), `perceptionProvider`, and spatial/serialization tests | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 32/32 green, `CameraImage? _` grep clean |
 | 2026-11-18 | Unit 5 | Added `DeterministicSpatialFormatter`, `LocalTtsService`, `ConnectivityProbe` (300 ms DNS probe, 5 s cache), and golden/unit tests | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 41/41 green |
 | 2026-11-18 | Unit 6 | Added `GeminiNanoBridge.kt` (`@OptIn(PublicPreviewAPI::class)`), `MainActivity.kt` EventChannel + MethodChannel wiring, Dart `NanoBridge` + `NanoStatusNotifier` + `nanoDownloadProgressProvider`, and mocked channel tests. CONTRACT CHANGE: verified `com.google.firebase.ai.*` package paths, nullable `onDeviceExtension?`, and sealed `DownloadStatus` subtypes. | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 48/48 green, `:app:compileDebugKotlin -Ptarget-platform=android-arm` `BUILD SUCCESSFUL`, `git grep FirebaseAIOnDevice` clean |
+| 2026-11-18 | Unit 7 | Added `GuidanceTier`/`GuidanceResult`/`CloudReasoningResult`, `CloudReasoningService` (`templateGenerativeModel()`, 1500 ms timeout, `NaviFailure` mapping), and `cloud_reasoning_service_test.dart`. CONTRACT CHANGE: `FirebaseAI.googleAI()` resolves `FirebaseAppCheck` from `FirebaseApp` automatically. | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 55/55 green |

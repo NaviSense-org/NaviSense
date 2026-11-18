@@ -370,8 +370,10 @@ The **Dart orchestrator** is the only router. The Kotlin bridge is called **only
 
 ### Reasoning
 
+> **CONTRACT CHANGE (Unit 7):** In `firebase_ai: 5.2.0`, `FirebaseAI.googleAI()` resolves `FirebaseAppCheck` automatically from the default `FirebaseApp` service registry rather than taking an `appCheck:` named parameter.
+
 ```dart
-final templateModel = FirebaseAI.googleAI(appCheck: FirebaseAppCheck.instance)
+final templateModel = FirebaseAI.googleAI()
     .templateGenerativeModel();
 
 final response = await templateModel
