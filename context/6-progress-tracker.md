@@ -54,9 +54,9 @@
 ## Phase 3 — Edge Fallback & Voice (Nov 21–22)
 
 ### Unit 5 — Deterministic formatter + local TTS
-- [ ] TODO — Formatter golden tests incl. "Caution: Chair very close ahead in center. Door on your left. Sign reads EXIT."
-- [ ] TODO — `LocalTtsService` (awaitSpeakCompletion, 0.45, 1.0), engine/language detection
-- [ ] TODO — Airplane Mode tap → speech ≤ 300 ms on Redmi A3
+- [x] DONE — Formatter golden tests incl. "Caution: Chair very close ahead in center. Door on your left. Sign reads EXIT."
+- [x] DONE — `LocalTtsService` (awaitSpeakCompletion, 0.45, 1.0), engine/language detection
+- [ ] TODO — Airplane Mode tap → speech ≤ 300 ms on Redmi A3 (requires physical device)
 
 ## Phase 4 — Hybrid AI (Nov 23–25)
 
@@ -143,3 +143,4 @@
 | 2026-11-18 | Unit 2 | Created `navisense-hybrid`, registered `com.navisense.app` + debug SHA-256, ran `flutterfire configure`, added `NaviFailure`, `AppCheckBootstrap`, `RemoteConfigService`, `PromptTemplateNotifier`, and `ProviderScope` bootstrap in `main.dart`. CONTRACT CHANGE: `Firebase.initializeApp()` relies on Android `google-services.json` resources so committed code does not import gitignored `firebase_options.dart`. | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 13/13 green, debug APK built with `google-services.json` active (`-Ptarget-platform=android-arm`), zero-secret & web-ban checks clean |
 | 2026-11-18 | Unit 3 | Added `Clock`, native `MainActivity.kt` (`compressJpeg`, `getDeviceMemoryClass`, `openAppSettings`), `CameraService` + `FrameThrottler`, `CameraControllerNotifier` lifecycle observer, `CameraPreviewLayer`, and `throttle_test.dart` | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 18/18 green, `:app:compileDebugKotlin -Ptarget-platform=android-arm` `BUILD SUCCESSFUL` |
 | 2026-11-18 | Unit 4 | Added `SpatialSceneSummary`/`SpatialEntity`, `spatial_math.dart`, sequential `MlKitPerceptionService` (label fusion, `<0.65` filtering, OCR area/length filtering, 5-entity cap), `perceptionProvider`, and spatial/serialization tests | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 32/32 green, `CameraImage? _` grep clean |
+| 2026-11-18 | Unit 5 | Added `DeterministicSpatialFormatter`, `LocalTtsService`, `ConnectivityProbe` (300 ms DNS probe, 5 s cache), and golden/unit tests | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 41/41 green |
