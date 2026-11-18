@@ -24,12 +24,12 @@
 ## Phase 1 — Foundation (Nov 17–18)
 
 ### Unit 1 — Scaffold, dependencies, zero-secret repo
-- [ ] TODO — `flutter create --platforms=android --org com.navisense navisense`
-- [ ] TODO — `pubspec.yaml` deps per §2.1; exact pins committed
-- [ ] TODO — `android/app/build.gradle.kts` minSdk 26 / compile 36 / target 36, BoM 35.2.0, ondevice beta08
-- [ ] TODO — `.gitignore` zero-secret block; `secrets.example.json`
-- [ ] TODO — Apache 2.0 `LICENSE`; GitHub "About" shows Apache-2.0
-- [ ] TODO — Debug APK builds
+- [x] DONE — `flutter create --platforms=android --org com.navisense navisense`
+- [x] DONE — `pubspec.yaml` deps per §2.1; exact pins committed
+- [x] DONE — `android/app/build.gradle.kts` minSdk 26 / compile 36 / target 36, BoM 35.2.0, ondevice beta08
+- [x] DONE — `.gitignore` zero-secret block; `secrets.example.json`
+- [x] DONE — Apache 2.0 `LICENSE`; GitHub "About" shows Apache-2.0
+- [x] DONE — Debug APK builds
 
 ### Unit 2 — Firebase bootstrap, App Check, Remote Config
 - [ ] TODO — `flutterfire configure` (output gitignored)
@@ -139,3 +139,4 @@
 | Date (WAT) | Unit | Summary | Verification |
 |---|---|---|---|
 | 2026-11-17 | Phase 0 | Created context files 1–7 | n/a (docs only) |
+| 2026-11-18 | Unit 1 | Scaffolded Android-only Flutter app (`com.navisense.app`), pinned `pubspec.yaml`/`pubspec.lock` deps, configured `build.gradle.kts` (`minSdk 26`, `compileSdk 36`, `targetSdk 36`, BoM `35.2.0`, `firebase-ai-ondevice:16.0.0-beta08`), `AndroidManifest.xml`, ProGuard, `analysis_options.yaml`, `.gitignore`, `README.md`, `NaviColors`, and bootstrap `main.dart` | `dart format` clean, `flutter analyze` 0 issues, `flutter test` 1/1 green, `:app:compileDebugKotlin` & debug APK built (`sdkVersion:'26'`, `targetSdkVersion:'36'`), zero-secret & web-ban checks clean |

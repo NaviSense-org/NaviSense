@@ -17,3 +17,10 @@ build/
 .vscode/
 android/.gradle/
 android/app/release/
+
+# Flutter / OS
+.DS_Store
+.flutter-plugins
+.flutter-plugins-dependencies
+coverage/
+doc/api/
