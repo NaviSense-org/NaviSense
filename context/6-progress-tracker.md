@@ -72,9 +72,9 @@
 - [ ] TODO — Live call succeeds with App Check enforced (requires Firebase Console + physical device)
 
 ### Unit 8 — Cloud TTS, PCM→WAV, SHA-256 cache
-- [ ] TODO — `pcmToWav` + header byte tests
-- [ ] TODO — `WavCache` atomic write, LRU 20 MB/200 files
-- [ ] TODO — `CloudTtsService` + `VoicePlayer` (BytesSource/DeviceFileSource)
+- [x] DONE — `pcmToWav` + header byte tests
+- [x] DONE — `WavCache` atomic write, LRU 20 MB/200 files
+- [x] DONE — `CloudTtsService` + `VoicePlayer` (BytesSource/DeviceFileSource)
 
 ### Unit 9 — AI Orchestrator & telemetry
 - [ ] TODO — Tier router + state machine + stale-result guard
@@ -146,3 +146,4 @@
 | 2026-11-18 | Unit 5 | Added `DeterministicSpatialFormatter`, `LocalTtsService`, `ConnectivityProbe` (300 ms DNS probe, 5 s cache), and golden/unit tests | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 41/41 green |
 | 2026-11-18 | Unit 6 | Added `GeminiNanoBridge.kt` (`@OptIn(PublicPreviewAPI::class)`), `MainActivity.kt` EventChannel + MethodChannel wiring, Dart `NanoBridge` + `NanoStatusNotifier` + `nanoDownloadProgressProvider`, and mocked channel tests. CONTRACT CHANGE: verified `com.google.firebase.ai.*` package paths, nullable `onDeviceExtension?`, and sealed `DownloadStatus` subtypes. | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 48/48 green, `:app:compileDebugKotlin -Ptarget-platform=android-arm` `BUILD SUCCESSFUL`, `git grep FirebaseAIOnDevice` clean |
 | 2026-11-18 | Unit 7 | Added `GuidanceTier`/`GuidanceResult`/`CloudReasoningResult`, `CloudReasoningService` (`templateGenerativeModel()`, 1500 ms timeout, `NaviFailure` mapping), and `cloud_reasoning_service_test.dart`. CONTRACT CHANGE: `FirebaseAI.googleAI()` resolves `FirebaseAppCheck` from `FirebaseApp` automatically. | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 55/55 green |
+| 2026-11-18 | Unit 8 | Added `pcmToWav` RIFF/WAVE codec, `WavCache` (SHA-256 key normalization, atomic `.tmp`→`.wav`, 20 MB/200-file LRU eviction), `CloudTtsService` (`gemini-3.1-flash-tts-preview`), `VoicePlayer` (single `AudioPlayer` + TTS arbitration), and WAV codec/cache tests | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 61/61 green |
