@@ -16,8 +16,8 @@
 ## Phase 0 — Context & Setup (Nov 17)
 
 - [x] DONE — Write `context/` files 1–7
-- [ ] TODO — Create Firebase project `navisense-hybrid`; enable Firebase AI Logic (Gemini Developer API)
-- [ ] TODO — Register Android app `com.navisense.app`; add debug + upload SHA-256 fingerprints
+- [~] IN_PROGRESS — Created Firebase project `navisense-hybrid` (`1043981425502`); enable Firebase AI Logic (Gemini Developer API) in Console
+- [~] IN_PROGRESS — Registered Android app `com.navisense.app` (`1:1043981425502:android:6e652e60e9b1b8d5db4dcf`) + debug SHA-256; upload SHA-256 pending release keystore (Unit 10)
 - [x] DONE — Create public GitHub repo `navisense` (empty, Apache-2.0 selected or LICENSE added in Unit 1)
 - [ ] TODO — Acquire/charge test devices: AICore flagship + Xiaomi Redmi A3 (3 GB)
 
@@ -32,10 +32,10 @@
 - [x] DONE — Debug APK builds
 
 ### Unit 2 — Firebase bootstrap, App Check, Remote Config
-- [ ] TODO — `flutterfire configure` (output gitignored)
-- [ ] TODO — App Check debug/playIntegrity switch + `--dart-define-from-file`
-- [ ] TODO — Remote Config defaults + `onConfigUpdated` listener + whitelist
-- [ ] TODO — Unit tests for template whitelist/fallback
+- [x] DONE — `flutterfire configure` (output gitignored)
+- [x] DONE — App Check debug/playIntegrity switch + `--dart-define-from-file`
+- [x] DONE — Remote Config defaults + `onConfigUpdated` listener + whitelist
+- [x] DONE — Unit tests for template whitelist/fallback
 
 ## Phase 2 — Perception (Nov 19–20)
 
@@ -140,3 +140,4 @@
 |---|---|---|---|
 | 2026-11-17 | Phase 0 | Created context files 1–7 | n/a (docs only) |
 | 2026-11-18 | Unit 1 | Scaffolded Android-only Flutter app (`com.navisense.app`), pinned `pubspec.yaml`/`pubspec.lock` deps, configured `build.gradle.kts` (`minSdk 26`, `compileSdk 36`, `targetSdk 36`, BoM `35.2.0`, `firebase-ai-ondevice:16.0.0-beta08`), `AndroidManifest.xml`, ProGuard, `analysis_options.yaml`, `.gitignore`, `README.md`, `NaviColors`, and bootstrap `main.dart` | `dart format` clean, `flutter analyze` 0 issues, `flutter test` 1/1 green, `:app:compileDebugKotlin` & debug APK built (`sdkVersion:'26'`, `targetSdkVersion:'36'`), zero-secret & web-ban checks clean |
+| 2026-11-18 | Unit 2 | Created `navisense-hybrid`, registered `com.navisense.app` + debug SHA-256, ran `flutterfire configure`, added `NaviFailure`, `AppCheckBootstrap`, `RemoteConfigService`, `PromptTemplateNotifier`, and `ProviderScope` bootstrap in `main.dart`. CONTRACT CHANGE: `Firebase.initializeApp()` relies on Android `google-services.json` resources so committed code does not import gitignored `firebase_options.dart`. | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 13/13 green, debug APK built with `google-services.json` active (`-Ptarget-platform=android-arm`), zero-secret & web-ban checks clean |

@@ -573,8 +573,10 @@ If `isLanguageInstalled('en-US')` is false, the UI shows a one-time banner: "Ins
 
 ## 2.8 Firebase App Check
 
+> **CONTRACT CHANGE (Unit 2):** `main.dart` calls `await Firebase.initializeApp()` without `options: DefaultFirebaseOptions.currentPlatform` so Android reads `android/app/google-services.json` resources via the Google Services Gradle plugin directly and committed Dart code never fails `flutter analyze` when gitignored `lib/firebase_options.dart` is absent.
+
 ```dart
-await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+await Firebase.initializeApp();
 await FirebaseAppCheck.instance.activate(
   // Mandated semantics: AndroidProvider.debug in debug, AndroidProvider.playIntegrity in release.
   // In firebase_app_check versions exposing provider classes, these map to:

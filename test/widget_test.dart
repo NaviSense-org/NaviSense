@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:navisense/core/theme/navi_colors.dart';
 import 'package:navisense/main.dart';
@@ -7,7 +8,7 @@ void main() {
   testWidgets('NaviSenseApp renders themed Deep Navy bootstrap scaffold', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const NaviSenseApp());
+    await tester.pumpWidget(const ProviderScope(child: NaviSenseApp()));
 
     expect(find.text('NaviSense'), findsOneWidget);
 
