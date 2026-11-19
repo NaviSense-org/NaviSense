@@ -149,10 +149,38 @@ void main() {
     expect(find.text('Clear audio cache'), findsOneWidget);
     expect(find.text('Licenses'), findsOneWidget);
 
+    _assertAllTapTargetsAtLeast72Dp(tester);
     await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
     await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
     await expectLater(tester, meetsGuideline(textContrastGuideline));
 
     handle.dispose();
+  });
+
+  testWidgets(
+      'HomeScreen and SettingsScreen do not overflow at 200% text scale',
+      (WidgetTester tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: buildOverrides().cast(),
+        child: const NaviSenseApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('READY • Tap anywhere'), findsOneWidget);
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Speech rate: 0.45'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Licenses'), 100);
+    expect(find.text('Licenses'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

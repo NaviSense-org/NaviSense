@@ -104,49 +104,84 @@ final class _NanoDownloadBannerState extends ConsumerState<NanoDownloadBanner> {
       percent: progress?.percent,
     );
 
-    return Semantics(
-      container: true,
-      sortKey: const OrdinalSortKey(1),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: NaviColors.navyDeep,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: _errorText != null
-                ? NaviColors.errorRed
-                : NaviColors.goldAntique,
-            width: 2,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Semantics(
+        container: true,
+        sortKey: const OrdinalSortKey(1),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: NaviColors.navySurface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _errorText != null
+                  ? NaviColors.errorRed
+                  : NaviColors.goldAntique,
+              width: 1.5,
+            ),
           ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            spacing: 12,
-            children: <Widget>[
-              Text(
-                message,
-                style: const TextStyle(
-                  color: NaviColors.cream,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 12,
+              children: <Widget>[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 12,
+                  children: <Widget>[
+                    Icon(
+                      _errorText != null
+                          ? Icons.warning_amber_rounded
+                          : isDownloading
+                              ? Icons.downloading_rounded
+                              : Icons.offline_bolt_rounded,
+                      color: _errorText != null
+                          ? NaviColors.errorRed
+                          : NaviColors.goldAntique,
+                      size: 24,
+                    ),
+                    Expanded(
+                      child: Text(
+                        message,
+                        style: const TextStyle(
+                          color: NaviColors.cream,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              _BannerActions(
-                isError: _errorText != null,
-                isDownloading: isDownloading,
-                onDownloadOrRetry: _startDownload,
-                onNotNow: () {
-                  unawaited(
-                    ref
-                        .read(settingsProvider.notifier)
-                        .dismissNanoBannerForSevenDays(),
-                  );
-                },
-                onHide: () => setState(() => _hiddenThisSession = true),
-              ),
-            ],
+                if (isDownloading)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      minHeight: 6,
+                      value: progress?.percent != null
+                          ? progress!.percent! / 100.0
+                          : null,
+                      backgroundColor: NaviColors.navyDeep,
+                      color: NaviColors.goldAntique,
+                    ),
+                  ),
+                _BannerActions(
+                  isError: _errorText != null,
+                  isDownloading: isDownloading,
+                  onDownloadOrRetry: _startDownload,
+                  onNotNow: () {
+                    unawaited(
+                      ref
+                          .read(settingsProvider.notifier)
+                          .dismissNanoBannerForSevenDays(),
+                    );
+                  },
+                  onHide: () => setState(() => _hiddenThisSession = true),
+                ),
+              ],
+            ),
           ),
         ),
       ),

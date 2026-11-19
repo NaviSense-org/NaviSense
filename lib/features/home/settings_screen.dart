@@ -264,64 +264,84 @@ final class SettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: 72,
         title: const Text('Settings'),
         leading: IconButton(
           constraints: const BoxConstraints(minWidth: 72, minHeight: 72),
           tooltip: 'Back to camera',
-          icon: const Icon(Icons.arrow_back, size: 28),
+          icon: const Icon(Icons.arrow_back_rounded, size: 28),
           onPressed: () => Navigator.of(context).pop(),
         ),
         leadingWidth: 72,
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: ColoredBox(
+            color: NaviColors.hairline,
+            child: SizedBox(height: 1, width: double.infinity),
+          ),
+        ),
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: <Widget>[
-            _SpeechRateTile(
-              rate: settings.speechRate,
-              onChanged: (double v) => unawaited(notifier.setSpeechRate(v)),
+            const _SectionHeader(title: 'Guidance'),
+            _SettingsCard(
+              children: <Widget>[
+                _SpeechRateTile(
+                  rate: settings.speechRate,
+                  onChanged: (double v) => unawaited(notifier.setSpeechRate(v)),
+                ),
+                const _SettingsHairlineDivider(),
+                _SettingsSwitchRow(
+                  title: 'Haptics',
+                  value: settings.hapticsEnabled,
+                  onChanged: (bool v) =>
+                      unawaited(notifier.setHapticsEnabled(v)),
+                ),
+              ],
             ),
-            const Divider(color: NaviColors.goldAntique, height: 1),
-            _SettingsSwitchRow(
-              title: 'Haptics',
-              subtitle: 'Feel distinct pulse patterns per AI tier',
-              value: settings.hapticsEnabled,
-              onChanged: (bool v) => unawaited(notifier.setHapticsEnabled(v)),
+            const SizedBox(height: 24),
+            const _SectionHeader(title: 'Judges & Diagnostics'),
+            _SettingsCard(
+              children: <Widget>[
+                _SettingsSwitchRow(
+                  title: 'Announce inference tier',
+                  value: settings.announceInferenceTier,
+                  onChanged: (bool v) =>
+                      unawaited(notifier.setAnnounceInferenceTier(v)),
+                ),
+                const _SettingsHairlineDivider(),
+                _SettingsSwitchRow(
+                  title: 'Judge mode',
+                  value: settings.judgeMode,
+                  onChanged: (bool v) => unawaited(notifier.setJudgeMode(v)),
+                ),
+              ],
             ),
-            const Divider(color: NaviColors.goldAntique, height: 1),
-            _SettingsSwitchRow(
-              title: 'Announce inference tier',
-              subtitle: 'Allow TalkBack to focus and read the tier pill',
-              value: settings.announceInferenceTier,
-              onChanged: (bool v) =>
-                  unawaited(notifier.setAnnounceInferenceTier(v)),
-            ),
-            const Divider(color: NaviColors.goldAntique, height: 1),
-            _SettingsSwitchRow(
-              title: 'Judge mode',
-              subtitle: 'Show latency and prompt template details on the pill',
-              value: settings.judgeMode,
-              onChanged: (bool v) => unawaited(notifier.setJudgeMode(v)),
-            ),
-            const Divider(color: NaviColors.goldAntique, height: 1),
-            _ActionSettingsRow(
-              title: 'Clear audio cache',
-              subtitle: 'Delete cached spoken WAV responses on this device',
-              icon: Icons.delete_outline,
-              onTap: () => unawaited(_confirmClearCache(context, ref)),
-            ),
-            const Divider(color: NaviColors.goldAntique, height: 1),
-            _ActionSettingsRow(
-              title: 'Licenses',
-              subtitle: 'Open-source software notices and Apache 2.0 license',
-              icon: Icons.description_outlined,
-              onTap: () {
-                showLicensePage(
-                  context: context,
-                  applicationName: 'NaviSense',
-                  applicationVersion: '1.0.0',
-                );
-              },
+            const SizedBox(height: 24),
+            const _SectionHeader(title: 'Storage & Legal'),
+            _SettingsCard(
+              children: <Widget>[
+                _ActionSettingsRow(
+                  title: 'Clear audio cache',
+                  icon: Icons.delete_rounded,
+                  onTap: () => unawaited(_confirmClearCache(context, ref)),
+                ),
+                const _SettingsHairlineDivider(),
+                _ActionSettingsRow(
+                  title: 'Licenses',
+                  icon: Icons.description_rounded,
+                  showChevron: true,
+                  onTap: () {
+                    showLicensePage(
+                      context: context,
+                      applicationName: 'NaviSense',
+                      applicationVersion: '1.0.0',
+                    );
+                  },
+                ),
+              ],
             ),
           ],
         ),
@@ -336,8 +356,7 @@ final class SettingsScreen extends ConsumerWidget {
         return AlertDialog(
           title: const Text('Clear audio cache?'),
           content: const Text(
-            'Cached high-fidelity voice responses will be removed until '
-            'synthesized online again.',
+            'Remove cached offline voice files from this device?',
           ),
           actions: <Widget>[
             TextButton(
@@ -360,6 +379,70 @@ final class SettingsScreen extends ConsumerWidget {
   }
 }
 
+final class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 10),
+      child: Semantics(
+        header: true,
+        child: Text(
+          title,
+          style: const TextStyle(
+            color: NaviColors.goldAntique,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.2,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _SettingsCard extends StatelessWidget {
+  const _SettingsCard({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: NaviColors.navySurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: NaviColors.hairline, width: 1),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Material(
+          type: MaterialType.transparency,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: children,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _SettingsHairlineDivider extends StatelessWidget {
+  const _SettingsHairlineDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16),
+      child: Divider(color: NaviColors.hairline, height: 1, thickness: 1),
+    );
+  }
+}
+
 final class _SpeechRateTile extends StatelessWidget {
   const _SpeechRateTile({required this.rate, required this.onChanged});
 
@@ -373,7 +456,7 @@ final class _SpeechRateTile extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 72),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             spacing: 8,
@@ -404,13 +487,11 @@ final class _SpeechRateTile extends StatelessWidget {
 final class _SettingsSwitchRow extends StatelessWidget {
   const _SettingsSwitchRow({
     required this.title,
-    required this.subtitle,
     required this.value,
     required this.onChanged,
   });
 
   final String title;
-  final String subtitle;
   final bool value;
   final ValueChanged<bool> onChanged;
 
@@ -422,25 +503,14 @@ final class _SettingsSwitchRow extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 72),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               spacing: 12,
               children: <Widget>[
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    spacing: 4,
-                    children: <Widget>[
-                      Text(
-                        title,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      Text(
-                        subtitle,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
                 Switch(value: value, onChanged: onChanged),
@@ -456,15 +526,15 @@ final class _SettingsSwitchRow extends StatelessWidget {
 final class _ActionSettingsRow extends StatelessWidget {
   const _ActionSettingsRow({
     required this.title,
-    required this.subtitle,
     required this.icon,
     required this.onTap,
+    this.showChevron = false,
   });
 
   final String title;
-  final String subtitle;
   final IconData icon;
   final VoidCallback onTap;
+  final bool showChevron;
 
   @override
   Widget build(BuildContext context) {
@@ -476,28 +546,23 @@ final class _ActionSettingsRow extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 72),
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 spacing: 12,
                 children: <Widget>[
-                  Icon(icon, color: NaviColors.goldAntique, size: 28),
+                  Icon(icon, color: NaviColors.goldAntique, size: 26),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      spacing: 4,
-                      children: <Widget>[
-                        Text(
-                          title,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        Text(
-                          subtitle,
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ],
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
+                  if (showChevron)
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: NaviColors.creamMuted,
+                      size: 26,
+                    ),
                 ],
               ),
             ),

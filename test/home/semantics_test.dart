@@ -8,6 +8,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:navisense/app.dart';
 import 'package:navisense/core/config/remote_config_service.dart';
 import 'package:navisense/core/theme/navi_colors.dart';
+import 'package:navisense/features/ai_orchestrator/ai_orchestrator.dart';
 import 'package:navisense/features/ai_orchestrator/models/guidance_result.dart';
 import 'package:navisense/features/ai_orchestrator/nano_bridge.dart';
 import 'package:navisense/features/camera/camera_controller_provider.dart';
@@ -189,5 +190,107 @@ void main() {
       find.byType(AnimatedContainer),
     );
     expect((t3Box.decoration! as BoxDecoration).color, NaviColors.goldAntique);
+  });
+
+  testWidgets(
+      'Camera permission denied exposes accessible 72dp recovery buttons to TalkBack',
+      (WidgetTester tester) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          remoteConfigServiceProvider.overrideWithValue(RemoteConfigService()),
+          cameraControllerProvider.overrideWithBuild(
+            (_, __) async => throw const CameraPermissionDeniedException(
+              permanentlyDenied: true,
+            ),
+          ),
+          nanoBridgeProvider.overrideWithValue(nanoBridge),
+          localTtsServiceProvider.overrideWithValue(
+            LocalTtsService(engine: ttsEngine),
+          ),
+          settingsStorageProvider.overrideWithValue(storage),
+        ],
+        child: const NaviSenseApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Camera access needed'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('Open settings to allow camera'),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('Try again'), findsOneWidget);
+
+    expect(
+      tester
+          .getSize(
+            find.widgetWithText(
+              OutlinedButton,
+              'Open settings to allow camera',
+            ),
+          )
+          .height,
+      greaterThanOrEqualTo(72),
+    );
+    expect(
+      tester.getSize(find.widgetWithText(TextButton, 'Try again')).height,
+      greaterThanOrEqualTo(72),
+    );
+
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    await expectLater(tester, meetsGuideline(textContrastGuideline));
+
+    handle.dispose();
+  });
+
+  testWidgets(
+      'HomeScreen shows visual Analyzing indicator while loading without duplicating TalkBack semantics',
+      (WidgetTester tester) async {
+    final handle = tester.ensureSemantics();
+    final loadingCompleter = Completer<GuidanceResult?>();
+    addTearDown(() {
+      if (!loadingCompleter.isCompleted) {
+        loadingCompleter.complete(null);
+      }
+    });
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          remoteConfigServiceProvider.overrideWithValue(RemoteConfigService()),
+          cameraControllerProvider.overrideWithBuild((_, __) async => null),
+          nanoBridgeProvider.overrideWithValue(nanoBridge),
+          localTtsServiceProvider.overrideWithValue(
+            LocalTtsService(engine: ttsEngine),
+          ),
+          settingsStorageProvider.overrideWithValue(storage),
+          aiOrchestratorProvider.overrideWithBuild(
+            (_, __) => loadingCompleter.future,
+          ),
+        ],
+        child: const NaviSenseApp(),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Analyzing…'), findsOneWidget);
+    expect(find.bySemanticsLabel('Analyzing…'), findsNothing);
+
+    final surfaceNode = tester.getSemantics(
+      find.bySemanticsLabel(
+        'NaviSense camera. Double tap to describe your surroundings.',
+      ),
+    );
+    expect(surfaceNode.getSemanticsData().value, 'Analyzing…');
+
+    loadingCompleter.complete(null);
+    await tester.pumpAndSettle();
+    expect(find.text('Analyzing…'), findsNothing);
+
+    handle.dispose();
   });
 }

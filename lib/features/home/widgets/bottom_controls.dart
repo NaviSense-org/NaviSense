@@ -29,7 +29,7 @@ final class BottomControls extends StatelessWidget {
         Expanded(
           child: _ControlTile(
             sortOrder: 3,
-            icon: Icons.replay,
+            icon: Icons.replay_rounded,
             label: 'Repeat',
             semanticsLabel: 'Repeat last guidance',
             onPressed: onRepeat,
@@ -38,7 +38,7 @@ final class BottomControls extends StatelessWidget {
         Expanded(
           child: _ControlTile(
             sortOrder: 4,
-            icon: Icons.text_fields,
+            icon: Icons.document_scanner_rounded,
             label: 'Read',
             semanticsLabel: 'Read text',
             onPressed: onReadText,
@@ -47,7 +47,7 @@ final class BottomControls extends StatelessWidget {
         Expanded(
           child: _ControlTile(
             sortOrder: 5,
-            icon: Icons.settings,
+            icon: Icons.settings_rounded,
             label: 'Settings',
             semanticsLabel: 'Settings',
             onPressed: onOpenSettings,
@@ -80,23 +80,23 @@ final class _ControlTile extends StatelessWidget {
       button: true,
       label: semanticsLabel,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 72, minHeight: 72),
+        constraints: const BoxConstraints(minWidth: 72, minHeight: 76),
         child: OutlinedButton(
           onPressed: onPressed,
           style: OutlinedButton.styleFrom(
-            minimumSize: const Size(72, 72),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-            backgroundColor: NaviColors.navyDeep.withValues(alpha: 0.92),
+            minimumSize: const Size(72, 76),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+            backgroundColor: NaviColors.navySurface.withValues(alpha: 0.94),
             foregroundColor: NaviColors.cream,
-            side: const BorderSide(color: NaviColors.goldAntique, width: 2),
+            side: const BorderSide(color: NaviColors.goldAntique, width: 1.5),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
             ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
-            spacing: 4,
+            spacing: 6,
             children: <Widget>[
               Icon(icon, color: NaviColors.cream, size: 26),
               FittedBox(

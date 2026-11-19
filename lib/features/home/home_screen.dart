@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:navisense/features/ai_orchestrator/ai_orchestrator.dart';
 import 'package:navisense/features/ai_orchestrator/models/guidance_result.dart';
 import 'package:navisense/features/camera/camera_controller_provider.dart';
 import 'package:navisense/features/camera/camera_service.dart';
+import 'package:navisense/features/camera/widgets/camera_preview_layer.dart';
 import 'package:navisense/features/home/settings_screen.dart';
 import 'package:navisense/features/home/widgets/bottom_controls.dart';
 import 'package:navisense/features/home/widgets/gesture_surface.dart';
@@ -46,14 +48,30 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     final orchestratorAsync = ref.watch(aiOrchestratorProvider);
+    final cameraAsync = ref.watch(cameraControllerProvider);
 
     _listenCameraStream();
     _listenOrchestratorSideEffects(settings);
     _scheduleStartupChecks(settings);
 
+    if (cameraAsync.hasError &&
+        cameraAsync.error is CameraPermissionDeniedException) {
+      return Scaffold(
+        backgroundColor: NaviColors.navyDeep,
+        body: CameraPermissionRecoveryOverlay(
+          onOpenSettings: () => unawaited(
+            ref.read(cameraServiceProvider).openAppSettings(),
+          ),
+          onRetry: () => ref.read(cameraControllerProvider.notifier).retry(),
+        ),
+      );
+    }
+
     final captionText = _resolveCaptionText(orchestratorAsync);
     final isVoiceUnavailableError = orchestratorAsync.hasError &&
         orchestratorAsync.error is GuidanceVoiceFailedException;
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0);
 
     return Scaffold(
       backgroundColor: NaviColors.navyDeep,
@@ -80,39 +98,70 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  const NanoDownloadBanner(),
-                  const SizedBox(height: 8),
-                  Center(
-                    child: TelemetryPill(
-                      judgeMode: settings.judgeMode,
-                      announceInferenceTier: settings.announceInferenceTier,
-                    ),
-                  ),
-                  if (_missingOfflineVoice) ...<Widget>[
-                    const SizedBox(height: 8),
-                    const _OfflineVoiceMissingBanner(),
-                  ],
-                  const Spacer(),
-                  if (captionText != null) ...<Widget>[
-                    _GuidanceCaption(
-                      text: captionText,
-                      liveRegion: isVoiceUnavailableError,
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  BottomControls(
-                    onRepeat: () => unawaited(
-                      ref.read(aiOrchestratorProvider.notifier).repeat(),
-                    ),
-                    onReadText: () => unawaited(
-                      ref.read(aiOrchestratorProvider.notifier).readText(),
-                    ),
-                    onOpenSettings: () => _openSettings(context),
-                  ),
-                ],
+              child: LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints constraints) {
+                  final reservedBottom = (textScale > 1.5 ? 140.0 : 108.0) +
+                      (captionText != null
+                          ? (textScale > 1.5 ? 160.0 : 180.0)
+                          : 0.0);
+                  final maxTopHeight = math.max(
+                    120.0,
+                    constraints.maxHeight - reservedBottom,
+                  );
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      ConstrainedBox(
+                        constraints: BoxConstraints(maxHeight: maxTopHeight),
+                        child: SingleChildScrollView(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              const NanoDownloadBanner(),
+                              Center(
+                                child: TelemetryPill(
+                                  judgeMode: settings.judgeMode,
+                                  announceInferenceTier:
+                                      settings.announceInferenceTier,
+                                ),
+                              ),
+                              if (_missingOfflineVoice) ...<Widget>[
+                                const SizedBox(height: 12),
+                                const _OfflineVoiceMissingBanner(),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Center(
+                          child: _AnalyzingIndicator(
+                            visible: orchestratorAsync.isLoading,
+                            disableAnimations: disableAnimations,
+                          ),
+                        ),
+                      ),
+                      if (captionText != null) ...<Widget>[
+                        _GuidanceCaption(
+                          text: captionText,
+                          liveRegion: isVoiceUnavailableError,
+                          maxLines: textScale > 1.5 ? 2 : 4,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      BottomControls(
+                        onRepeat: () => unawaited(
+                          ref.read(aiOrchestratorProvider.notifier).repeat(),
+                        ),
+                        onReadText: () => unawaited(
+                          ref.read(aiOrchestratorProvider.notifier).readText(),
+                        ),
+                        onOpenSettings: () => _openSettings(context),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ),
@@ -268,11 +317,83 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
+final class _AnalyzingIndicator extends StatelessWidget {
+  const _AnalyzingIndicator({
+    required this.visible,
+    required this.disableAnimations,
+  });
+
+  final bool visible;
+  final bool disableAnimations;
+
+  @override
+  Widget build(BuildContext context) {
+    // WHY: GestureSurface already exposes value 'Analyzing…' to TalkBack, so
+    // the visual pill is excluded from semantics to prevent double announcements.
+    return IgnorePointer(
+      child: ExcludeSemantics(
+        child: AnimatedSwitcher(
+          duration: disableAnimations
+              ? Duration.zero
+              : const Duration(milliseconds: 180),
+          child: visible
+              ? DecoratedBox(
+                  key: const ValueKey<String>('analyzing-pill'),
+                  decoration: BoxDecoration(
+                    color: NaviColors.navySurface.withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: NaviColors.goldAntique,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      spacing: 12,
+                      children: <Widget>[
+                        SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: NaviColors.goldAntique,
+                          ),
+                        ),
+                        Flexible(
+                          child: Text(
+                            'Analyzing…',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: NaviColors.cream,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ),
+    );
+  }
+}
+
 final class _GuidanceCaption extends StatelessWidget {
-  const _GuidanceCaption({required this.text, required this.liveRegion});
+  const _GuidanceCaption({
+    required this.text,
+    required this.liveRegion,
+    required this.maxLines,
+  });
 
   final String text;
   final bool liveRegion;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -282,15 +403,16 @@ final class _GuidanceCaption extends StatelessWidget {
         container: true,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: NaviColors.navyDeep.withValues(alpha: 0.88),
-            borderRadius: BorderRadius.circular(14),
+            color: NaviColors.navySurface.withValues(alpha: 0.94),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: NaviColors.hairline, width: 1),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Text(
               text,
               textAlign: TextAlign.center,
-              maxLines: 4,
+              maxLines: maxLines,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: NaviColors.cream,
@@ -315,20 +437,32 @@ final class _OfflineVoiceMissingBanner extends StatelessWidget {
       container: true,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: NaviColors.navyDeep,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: NaviColors.errorRed, width: 2),
+          color: NaviColors.navySurface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: NaviColors.errorRed, width: 1.5),
         ),
         child: const Padding(
-          padding: EdgeInsets.all(12),
-          child: Text(
-            'Install offline voice data in Settings → Text-to-speech',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: NaviColors.cream,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            spacing: 12,
+            children: <Widget>[
+              Icon(
+                Icons.record_voice_over_rounded,
+                color: NaviColors.errorRed,
+                size: 24,
+              ),
+              Expanded(
+                child: Text(
+                  'Install offline voice data in Settings → Text-to-speech',
+                  style: TextStyle(
+                    color: NaviColors.cream,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

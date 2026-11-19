@@ -40,12 +40,21 @@ final class TelemetryPill extends ConsumerWidget {
               duration: disableAnimations
                   ? Duration.zero
                   : const Duration(milliseconds: 250),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
               decoration: BoxDecoration(
                 color: telemetry.backgroundColor,
                 borderRadius: BorderRadius.circular(24),
                 border: telemetry.borderColor != null
                     ? Border.all(color: telemetry.borderColor!, width: 2)
+                    : null,
+                boxShadow: telemetry.borderColor == null
+                    ? const <BoxShadow>[
+                        BoxShadow(
+                          color: Color(0x45000000),
+                          blurRadius: 12,
+                          offset: Offset(0, 4),
+                        ),
+                      ]
                     : null,
               ),
               child: Column(
@@ -91,6 +100,7 @@ final class _PillPrimaryRow extends StatelessWidget {
               color: telemetry.foregroundColor,
               fontSize: 18,
               fontWeight: FontWeight.w700,
+              letterSpacing: 0.2,
               height: 1.2,
             ),
           ),
