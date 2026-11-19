@@ -84,11 +84,11 @@
 ## Phase 5 — UX, Hardening, Submission (Nov 26–30)
 
 ### Unit 10 — TalkBack UI, haptics, release, README, demo
-- [ ] TODO — HomeScreen, GestureSurface, pill, banner, bottom controls, settings
-- [ ] TODO — Haptic patterns per tier; semantics + 72dp tests
+- [x] DONE — HomeScreen, GestureSurface, pill, banner, bottom controls, settings
+- [x] DONE — Haptic patterns per tier; semantics + 72dp tests
 - [ ] TODO — Manual TalkBack pass on both devices
 - [ ] TODO — Release APK (Play Integrity) uploaded to GitHub Releases
-- [ ] TODO — README "For Judges" section complete
+- [x] DONE — README "For Judges" section complete
 - [ ] TODO — App Check enforcement ON for AI Logic + Remote Config
 
 ### Submission
@@ -148,3 +148,4 @@
 | 2026-11-18 | Unit 7 | Added `GuidanceTier`/`GuidanceResult`/`CloudReasoningResult`, `CloudReasoningService` (`templateGenerativeModel()`, 1500 ms timeout, `NaviFailure` mapping), and `cloud_reasoning_service_test.dart`. CONTRACT CHANGE: `FirebaseAI.googleAI()` resolves `FirebaseAppCheck` from `FirebaseApp` automatically. | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 55/55 green |
 | 2026-11-18 | Unit 8 | Added `pcmToWav` RIFF/WAVE codec, `WavCache` (SHA-256 key normalization, atomic `.tmp`→`.wav`, 20 MB/200-file LRU eviction), `CloudTtsService` (`gemini-3.1-flash-tts-preview`), `VoicePlayer` (single `AudioPlayer` + TTS arbitration), and WAV codec/cache tests | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 61/61 green |
 | 2026-11-18 | Unit 9 | Added `AiOrchestrator` (3-tier failover router, `describe`/`readText`/`repeat`/`stop`, `_requestId` stale guard, Stage 0 freshness check, TalkBack fallback on total voice failure), `TelemetryNotifier` with exact §3.7 pill labels, and routing/telemetry tests | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 75/75 green |
+| 2026-11-19 | Unit 10 | Added `NaviTheme`, `Result`, `Haptics` (tier-distinct vibration patterns), `TelemetryPill`, `NanoDownloadBanner`, `GestureSurface`, `BottomControls`, `HomeScreen` (with camera permission overlay + first-launch TalkBack prompt + 5 s heartbeat), `SettingsScreen`, `NaviSenseApp` (`app.dart` + `main.dart` bootstrap), optional `android/key.properties` release signing DSL, judge `README.md`, and TalkBack semantics / 72dp touch-target / contrast tests | `dart format` clean (0 changed), `flutter analyze` 0 issues, `flutter test` 79/79 green, `:app:compileDebugKotlin -Ptarget-platform=android-arm` `BUILD SUCCESSFUL`, debug APK built (`--target-platform android-arm`), zero-secret & web-ban checks clean |
