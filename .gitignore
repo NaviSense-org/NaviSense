@@ -24,3 +24,7 @@ android/app/release/
 .flutter-plugins-dependencies
 coverage/
 doc/api/
+
+# Local workspace rules & personal dev notes (never commit)
+.rules/
+LOCAL_NOTES.md
