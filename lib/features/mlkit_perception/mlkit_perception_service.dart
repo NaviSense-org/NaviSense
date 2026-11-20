@@ -119,11 +119,11 @@ final class MlKitPerceptionService {
   final Duration _timeout;
 
   Future<void> _slot = Future<void>.value();
-  bool _busy = false;
+  int _pending = 0;
 
-  /// Whether an ML Kit pass is currently running (stream frames skip instead
+  /// Whether an ML Kit pass is running or queued (stream frames skip instead
   /// of queueing behind it).
-  bool get isBusy => _busy;
+  bool get isBusy => _pending > 0;
 
   /// Builds an [InputImage] and rotation-corrected frame [Size] from an NV21
   /// [CameraImage] without retaining the [CameraImage] buffer.
@@ -217,11 +217,11 @@ final class MlKitPerceptionService {
     InputImage inputImage, {
     required Size frameSize,
   }) async {
+    _pending++;
     final previous = _slot;
     final release = Completer<void>();
     _slot = release.future;
     await previous;
-    _busy = true;
 
     final startedMs = _clock.nowMs();
     final run = _runSequential(
@@ -231,7 +231,7 @@ final class MlKitPerceptionService {
     );
     unawaited(
       run.then<void>((_) {}, onError: (Object _) {}).whenComplete(() {
-        _busy = false;
+        _pending--;
         release.complete();
       }),
     );

@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:navisense/core/connectivity/network_status.dart';
 import 'package:navisense/core/errors/navi_failure.dart';
 import 'package:navisense/core/theme/navi_colors.dart';
 import 'package:navisense/core/utils/haptics.dart';
@@ -22,6 +23,7 @@ import 'package:navisense/features/mlkit_perception/mlkit_perception_service.dar
 import 'package:navisense/features/mlkit_perception/perception_provider.dart';
 import 'package:navisense/features/telemetry/widgets/telemetry_pill.dart';
 import 'package:navisense/features/voice/local_tts_service.dart';
+import 'package:navisense/features/voice/voice_player.dart';
 
 /// Primary blind-first spatial guidance screen (`3-ui-context.md` §3.2–§3.8).
 final class HomeScreen extends ConsumerStatefulWidget {
@@ -53,7 +55,10 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
     final cameraAsync = ref.watch(cameraControllerProvider);
 
     _listenCameraStream();
+    _listenNetworkChanges();
     _listenOrchestratorSideEffects(settings);
+    final isOffline =
+        ref.watch(networkStatusProvider) == NetworkStatus.offline;
     _scheduleStartupChecks(settings);
 
     if (cameraAsync.hasError &&
@@ -128,6 +133,10 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
                                       settings.announceInferenceTier,
                                 ),
                               ),
+                              if (isOffline) ...<Widget>[
+                                const SizedBox(height: 12),
+                                const _NetworkOfflineBanner(),
+                              ],
                               if (_missingOfflineVoice) ...<Widget>[
                                 const SizedBox(height: 12),
                                 const _OfflineVoiceMissingBanner(),
@@ -218,6 +227,50 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
         }
       }
     });
+  }
+
+  /// Offline notice spoken when the connection drops.
+  static const String offlineNotice =
+      "You're offline. I'll keep guiding you with on-device detection, "
+      'with less detail.';
+
+  /// Notice spoken when the connection returns.
+  static const String onlineNotice =
+      'Back online. Full scene descriptions are available again.';
+
+  void _listenNetworkChanges() {
+    ref.listen<NetworkStatus>(networkStatusProvider, (
+      NetworkStatus? prev,
+      NetworkStatus next,
+    ) {
+      if (prev == next) return;
+      if (next == NetworkStatus.offline) {
+        unawaited(_announceWhenIdle(offlineNotice));
+      } else if (next == NetworkStatus.online &&
+          prev == NetworkStatus.offline) {
+        unawaited(_announceWhenIdle(onlineNotice));
+      }
+    });
+  }
+
+  /// Speaks [message] as soon as no guidance is being produced or spoken.
+  ///
+  /// WHY: A connectivity notice must never cut off a hazard warning, but it
+  /// should still arrive promptly (bounded wait of ~10 s).
+  Future<void> _announceWhenIdle(String message) async {
+    for (var i = 0; i < 20; i++) {
+      if (!mounted) return;
+      final busy = ref.read(aiOrchestratorProvider).isLoading ||
+          ref.read(voicePlayerProvider).isBusy;
+      if (!busy) break;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    if (!mounted) return;
+    try {
+      await ref.read(voicePlayerProvider).speakLocal(message);
+    } on NaviFailure {
+      _announce(message);
+    }
   }
 
   void _listenOrchestratorSideEffects(SettingsState settings) {
@@ -450,6 +503,51 @@ final class _GuidanceCaption extends StatelessWidget {
                 height: 1.35,
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _NetworkOfflineBanner extends StatelessWidget {
+  const _NetworkOfflineBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: 'Offline. On-device guidance only.',
+      excludeSemantics: true,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: NaviColors.navySurface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: NaviColors.goldAntique, width: 1.5),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            spacing: 12,
+            children: <Widget>[
+              Icon(
+                Icons.cloud_off_rounded,
+                color: NaviColors.goldAntique,
+                size: 24,
+              ),
+              Expanded(
+                child: Text(
+                  'Offline · on-device guidance only',
+                  style: TextStyle(
+                    color: NaviColors.cream,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

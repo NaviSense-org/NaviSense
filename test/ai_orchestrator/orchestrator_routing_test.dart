@@ -90,7 +90,12 @@ void main() {
     isOffline = false;
     announcements = <String>[];
 
-    when(() => gateway.captureSnapshot()).thenAnswer((_) async => jpeg);
+    when(
+      () => gateway.captureSnapshot(
+        maxEdge: any(named: 'maxEdge'),
+        quality: any(named: 'quality'),
+      ),
+    ).thenAnswer((_) async => jpeg);
     when(() => gateway.resolveFreshSummary(any())).thenAnswer(
       (_) async => summary,
     );
@@ -370,6 +375,46 @@ void main() {
         'IN_CLOUD • Gemini Flash • local voice',
       );
       verify(() => ttsEngine.speak('Chair very close.')).called(1);
+    });
+
+    test(
+        '6b. Slow cloud TTS -> cloud text spoken by local voice after the '
+        'wait budget, not after the full TTS timeout', () async {
+      when(
+        () => templateClient.generateContent(
+          any(),
+          inputs: any(named: 'inputs'),
+        ),
+      ).thenAnswer((_) async => 'Chair directly ahead.');
+      final slowTts = Completer<RawTtsAudio>();
+      when(
+        () => cloudTtsClient.synthesizePcm(
+          text: any(named: 'text'),
+          voiceName: any(named: 'voiceName'),
+          model: any(named: 'model'),
+        ),
+      ).thenAnswer((_) => slowTts.future);
+
+      final container = makeContainer(
+        cloudTimeout: const Duration(seconds: 30),
+      );
+      final sw = Stopwatch()..start();
+      await container.read(aiOrchestratorProvider.notifier).describe();
+      sw.stop();
+
+      final result = container.read(aiOrchestratorProvider).value!;
+      expect(result.tier, const Tier2Cloud(localVoice: true));
+      expect(result.text, 'Chair directly ahead.');
+      verify(() => ttsEngine.speak('Chair directly ahead.')).called(1);
+      expect(
+        sw.elapsed,
+        lessThan(
+          AiOrchestrator.cloudVoiceWaitBudget +
+              const Duration(milliseconds: 1500),
+        ),
+      );
+      slowTts
+          .complete(RawTtsAudio(bytes: pcm, mimeType: 'audio/L16;rate=24000'));
     });
 
     test('7. Tier3 cache hit -> playFile called, no flutter_tts speak',

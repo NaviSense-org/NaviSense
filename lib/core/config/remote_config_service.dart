@@ -58,8 +58,12 @@ final class RemoteConfigService {
   /// instead of the direct Gemini client.
   static const String keyUseServerTemplates = 'use_server_templates';
 
-  /// Default Tier 2 Gemini model (matches the official Android hybrid sample).
-  static const String defaultCloudModel = 'gemini-3.5-flash';
+  /// Default Tier 2 Gemini model.
+  ///
+  /// WHY: `gemini-3.5-flash-lite` is the current stable low-latency multimodal
+  /// model in Firebase AI Logic; two-sentence spatial guidance does not need
+  /// full Flash. Override with Remote Config `cloud_model`.
+  static const String defaultCloudModel = 'gemini-3.5-flash-lite';
 
   /// Server Prompt Templates are opt-in; their model is pinned in the console.
   static const bool defaultUseServerTemplates = false;
@@ -73,10 +77,11 @@ final class RemoteConfigService {
   /// Default cloud stage timeout in milliseconds.
   ///
   /// WHY: A multimodal Gemini Flash call (768 px JPEG + prompt) through the
-  /// Firebase AI Logic proxy is typically 1.5–4 s end to end on mobile data.
+  /// Firebase AI Logic proxy is typically 1.5–4 s end to end, and a limited-use
+  /// App Check token exchange runs first; slow 3G/4G links need headroom.
   /// The old 1500 ms budget made Tier 2 time out on most taps and silently
   /// degrade every request to the Tier 3 ML Kit formatter.
-  static const int defaultCloudTimeoutMs = 6000;
+  static const int defaultCloudTimeoutMs = 9000;
 
   /// Default Cloud TTS voice name.
   static const String defaultTtsVoiceName = 'Kore';

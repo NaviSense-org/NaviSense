@@ -79,8 +79,15 @@ final class VoicePlayer {
   /// Arbitrates with `AudioPlayer`, then speaks [text] via [LocalTtsService].
   Future<void> speakLocal(String text) async {
     await _stopAudioOnly();
+    // WHY: Latest utterance wins. flutter_tts rejects a new utterance while
+    // another is in flight, which would drop real guidance behind a progress
+    // notice ("Still working...").
+    if (_localTts.isSpeaking) await _localTts.stop();
     await _localTts.speak(text);
   }
+
+  /// Whether any voice output (WAV or local TTS) is currently playing.
+  bool get isBusy => _activePlayback != null || _localTts.isSpeaking;
 
   /// Stops whichever voice output (WAV player or local TTS) is active.
   Future<void> stop() async {

@@ -51,6 +51,9 @@ final class FirebaseTemplateReasoningClient implements TemplateReasoningClient {
   }
 }
 
+/// Non-template input key selecting image detail (`'low'` | `'high'`).
+const String detailInputKey = '_detail';
+
 /// Direct Firebase AI Logic Gemini client used by default for Tier 2.
 ///
 /// WHY: Server Prompt Templates hard-code their model inside the Firebase
@@ -103,7 +106,14 @@ final class FirebaseGeminiReasoningClient implements TemplateReasoningClient {
         systemInstructionFor(templateId, locale),
       ),
       generationConfig: GenerationConfig(
-        maxOutputTokens: 160,
+        // WHY: Two spoken sentences fit in ~60 tokens; a tight cap bounds
+        // generation time on slow links.
+        maxOutputTokens: 120,
+        // WHY: Low media resolution cuts image tokens (faster prefill, less
+        // server time); text reading keeps the model default for legibility.
+        mediaResolution: inputs[detailInputKey] == 'high'
+            ? MediaResolution.unspecified
+            : MediaResolution.low,
         thinkingConfig: ThinkingConfig.withThinkingLevel(
           ThinkingLevel.minimal,
         ),
@@ -165,8 +175,13 @@ final class _SwitchingReasoningClient implements TemplateReasoningClient {
     String templateId, {
     required Map<String, Object?> inputs,
   }) =>
-      (_useTemplates() ? _templates : _direct)
-          .generateContent(templateId, inputs: inputs);
+      _useTemplates()
+          ? _templates.generateContent(
+              templateId,
+              // Server templates validate inputs against their schema.
+              inputs: Map<String, Object?>.of(inputs)..remove(detailInputKey),
+            )
+          : _direct.generateContent(templateId, inputs: inputs);
 }
 
 /// Provides [CloudReasoningService] reading live template ID and timeout from
@@ -226,6 +241,8 @@ final class CloudReasoningService {
       'scene': scenePrompt,
       'image': 'data:image/jpeg;base64,${base64Encode(jpeg)}',
       'locale': locale,
+      // Read by FirebaseGeminiReasoningClient only (stripped for templates).
+      detailInputKey: textOnly ? 'high' : 'low',
     };
 
     try {

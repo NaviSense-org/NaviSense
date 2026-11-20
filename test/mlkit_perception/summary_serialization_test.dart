@@ -229,5 +229,32 @@ void main() {
         throwsA(isA<TimeoutFailure>()),
       );
     });
+
+    test('serializes passes: never two ML Kit runs in flight (low-RAM safety)',
+        () async {
+      var inFlight = 0;
+      var maxInFlight = 0;
+      when(() => detectors.detectObjects(any())).thenAnswer((_) async {
+        inFlight++;
+        maxInFlight = inFlight > maxInFlight ? inFlight : maxInFlight;
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        inFlight--;
+        return <DetectedObject>[];
+      });
+      when(() => detectors.labelImage(any()))
+          .thenAnswer((_) async => <ImageLabel>[]);
+      when(() => detectors.recognizeText(any())).thenAnswer(
+        (_) async => RecognizedText(text: '', blocks: <TextBlock>[]),
+      );
+
+      final image = InputImage.fromFilePath('/tmp/test.jpg');
+      final first = service.perceive(image, frameSize: const Size(640, 480));
+      expect(service.isBusy, isTrue);
+      final second = service.perceive(image, frameSize: const Size(640, 480));
+      await Future.wait(<Future<SpatialSceneSummary>>[first, second]);
+
+      expect(maxInFlight, 1);
+      expect(service.isBusy, isFalse);
+    });
   });
 }

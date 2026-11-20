@@ -10,6 +10,15 @@ abstract final class AppCheckBootstrap {
   /// Dart define key supplying the safelisted debug token from `secrets.json`.
   static const String debugTokenEnvKey = 'APP_CHECK_DEBUG_TOKEN';
 
+  /// Dart define that forces the debug provider in a *release* build.
+  ///
+  /// WHY: Play Integrity rejects sideloaded APKs (e.g. a judge installing from
+  /// GitHub Releases), which would lock them out of every cloud tier. The
+  /// hackathon accepts App Check debug tokens, so the CI "internal" APK sets
+  /// this together with [debugTokenEnvKey]. Never set it for Play builds.
+  static const String forceDebugProviderEnvKey =
+      'APP_CHECK_FORCE_DEBUG_PROVIDER';
+
   static const String _placeholderPrefix = '<';
 
   /// Activates App Check and enables automatic token refresh.
@@ -22,7 +31,8 @@ abstract final class AppCheckBootstrap {
     String? debugTokenOverride,
   }) async {
     final instance = appCheck ?? FirebaseAppCheck.instance;
-    final isDebug = isDebugModeOverride ?? kDebugMode;
+    final isDebug = isDebugModeOverride ??
+        (kDebugMode || const bool.fromEnvironment(forceDebugProviderEnvKey));
     final rawToken =
         debugTokenOverride ?? const String.fromEnvironment(debugTokenEnvKey);
     final debugToken =

@@ -176,15 +176,25 @@ final class LocalTtsService {
     if (!_isAvailable) {
       throw const VoiceFailure('No on-device TTS engine available');
     }
+    _speaking++;
     try {
       final ok = await _engine.speak(text);
       if (!ok) {
+        // flutter_tts returns 0 when the utterance was interrupted by stop()
+        // or rejected because another utterance was in flight.
         throw const VoiceFailure('Local TTS engine rejected utterance');
       }
     } on PlatformException catch (e) {
       throw VoiceFailure(e.message ?? 'Local TTS speak failed');
+    } finally {
+      _speaking--;
     }
   }
+
+  int _speaking = 0;
+
+  /// Whether a local utterance is currently being spoken.
+  bool get isSpeaking => _speaking > 0;
 
   /// Stops active local TTS playback immediately.
   Future<void> stop() async {

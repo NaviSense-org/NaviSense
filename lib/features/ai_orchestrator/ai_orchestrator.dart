@@ -6,6 +6,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:navisense/core/connectivity/connectivity_probe.dart';
+import 'package:navisense/core/connectivity/network_status.dart';
 import 'package:navisense/core/errors/navi_failure.dart';
 import 'package:navisense/core/utils/clock.dart';
 import 'package:navisense/core/utils/navi_log.dart';
@@ -38,8 +39,8 @@ final class GuidanceVoiceFailedException implements Exception {
 
 /// Abstracts snapshot capture + Stage 0 freshness resolution for unit tests.
 abstract interface class OrchestratorPerceptionGateway {
-  /// Captures a compressed `<= 768px` JPEG snapshot.
-  Future<Uint8List> captureSnapshot();
+  /// Captures a compressed JPEG snapshot whose longest edge is `<= maxEdge`.
+  Future<Uint8List> captureSnapshot({int maxEdge = 768, int quality = 70});
 
   /// Returns a fresh (`<= 2s`) [SpatialSceneSummary], running Stage 0 on [jpeg]
   /// if the cached stream summary is missing or stale.
@@ -56,14 +57,19 @@ final class DefaultOrchestratorPerceptionGateway
   final Ref _ref;
 
   @override
-  Future<Uint8List> captureSnapshot() async {
+  Future<Uint8List> captureSnapshot({
+    int maxEdge = 768,
+    int quality = 70,
+  }) async {
     final controller = _ref.read(cameraControllerProvider).value;
     if (controller == null || !controller.value.isInitialized) {
       throw const CameraFailure('Camera is not ready yet');
     }
-    return _ref
-        .read(cameraServiceProvider)
-        .captureSnapshot(FlutterCameraStreamHandle(controller));
+    return _ref.read(cameraServiceProvider).captureSnapshot(
+          FlutterCameraStreamHandle(controller),
+          maxEdge: maxEdge,
+          quality: quality,
+        );
   }
 
   @override
@@ -181,7 +187,12 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
     final gateway = ref.read(orchestratorPerceptionGatewayProvider);
     final Uint8List jpeg;
     try {
-      jpeg = await gateway.captureSnapshot();
+      // WHY: Upload size dominates on real mobile networks. Scene description
+      // only needs a 512 px frame (~2.3x fewer pixels, ~30-40 KB); reading
+      // text keeps 768 px so small signage stays legible.
+      jpeg = textOnly
+          ? await gateway.captureSnapshot(maxEdge: 768, quality: 75)
+          : await gateway.captureSnapshot(maxEdge: 512, quality: 65);
     } on NaviFailure catch (e, st) {
       if (_isStale(myId)) return;
       const fallbackResult = GuidanceResult(
@@ -266,10 +277,22 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
       // cloud call must not queue behind a slow ML Kit pass.
       final hint = await _cloudHint(summaryFuture);
       if (_isStale(myId)) return;
+      // WHY: Never leave a blind user in silence on a slow link: if the
+      // cloud hasn't answered soon, say so once (haptic heartbeat continues).
+      final slowNotice = Timer(slowNoticeDelay, () {
+        if (_isStale(myId)) return;
+        unawaited(
+          ref
+              .read(voicePlayerProvider)
+              .speakLocal(slowNoticeMessage)
+              .catchError((Object _) {}),
+        );
+      });
       try {
         final cloudRes = await ref
             .read(cloudReasoningServiceProvider)
             .reason(jpeg: jpeg, summary: hint, textOnly: textOnly);
+        slowNotice.cancel();
         if (_isStale(myId)) return;
 
         _logTiming(
@@ -285,6 +308,7 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
         );
         return;
       } on NaviFailure catch (e, st) {
+        slowNotice.cancel();
         log(
           'Tier 2 cloud reasoning failed; failing over to Tier 3',
           name: 'navisense.orchestrator',
@@ -346,6 +370,17 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
   /// with the local voice (synthesis keeps running to warm the WAV cache).
   static const Duration cloudVoiceWaitBudget = Duration(milliseconds: 1500);
 
+  /// Delay before the "still working" notice on a slow cloud request.
+  static const Duration slowNoticeDelay = Duration(milliseconds: 3500);
+
+  /// Spoken once when the cloud is slow to answer.
+  static const String slowNoticeMessage =
+      'Still working. The connection is slow.';
+
+  /// Reasoning latency above which the link is treated as slow and cloud TTS
+  /// is skipped for uncached phrases.
+  static const int slowNetworkThresholdMs = 3500;
+
   /// How long the cloud call waits for an in-flight Stage 0 pass to use as a
   /// hint before falling back to the latest stream summary.
   static const Duration cloudHintGrace = Duration(milliseconds: 150);
@@ -396,6 +431,9 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
   }
 
   Future<bool> _probeOffline() async {
+    // WHY: The live connectivity stream already knows when the link is down;
+    // skip the DNS probe and go straight to on-device guidance.
+    if (ref.read(networkStatusProvider) == NetworkStatus.offline) return true;
     try {
       return await ref.read(connectivityProbeProvider).isOffline();
     } catch (_) {
@@ -426,12 +464,38 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
     final telemetry = ref.read(telemetryProvider.notifier);
     final voicePlayer = ref.read(voicePlayerProvider);
 
+    // WHY: On a slow link, a second round trip for Gemini TTS both delays
+    // speech and competes for bandwidth with the user's next request. If the
+    // reasoning call itself was slow, skip cloud voice entirely (unless the
+    // phrase is already cached) and speak immediately.
+    final ttsService = ref.read(cloudTtsServiceProvider);
+    if (cloudRes.latencyMs > slowNetworkThresholdMs) {
+      final cached = await ttsService.lookupCached(cloudRes.text);
+      if (_isStale(myId)) return;
+      if (cached == null) {
+        log(
+          'Slow network (reasoning ${cloudRes.latencyMs}ms); skipping cloud '
+          'voice',
+          name: 'navisense.orchestrator',
+        );
+        final localVoiceResult = GuidanceResult(
+          text: cloudRes.text,
+          tier: const Tier2Cloud(localVoice: true),
+          stage0Ms: summary.processingMs,
+          inferenceMs: cloudRes.latencyMs,
+          templateId: cloudRes.templateId,
+          hasVeryCloseObstacle: summary.hasVeryCloseObstacle,
+        );
+        telemetry.updateFromResult(localVoiceResult);
+        await _deliverLocalVoice(localVoiceResult, myId);
+        return;
+      }
+    }
+
     // WHY: Gemini TTS is a second full round trip (observed > 6 s on mobile
     // data). Wait only briefly; otherwise speak now with the local voice and
     // let synthesis finish in the background so a repeat plays cached audio.
-    final ttsFuture = ref.read(cloudTtsServiceProvider).synthesize(
-          cloudRes.text,
-        );
+    final ttsFuture = ttsService.synthesize(cloudRes.text);
     try {
       final ttsRes = await ttsFuture.timeout(cloudVoiceWaitBudget);
       if (_isStale(myId)) return;

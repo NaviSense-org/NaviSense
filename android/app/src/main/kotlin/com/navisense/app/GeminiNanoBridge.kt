@@ -414,9 +414,10 @@ class GeminiNanoBridge(
         const val DEFAULT_JPEG_QUALITY = 70
         // WHY: The previous "gemini-3-flash" is not a documented model ID
         // (Gemini 3 Flash shipped as "gemini-3-flash-preview"; the official
-        // Android hybrid sample uses "gemini-3.5-flash"). An invalid ID makes
+        // Android hybrid sample uses "gemini-3.5-flash"; Flash-Lite is the
+        // low-latency sibling). An invalid ID makes
         // every PREFER_ON_DEVICE cloud fallback fail.
-        const val CLOUD_MODEL_FOR_HYBRID = "gemini-3.5-flash"
+        const val CLOUD_MODEL_FOR_HYBRID = "gemini-3.5-flash-lite"
         const val DEFAULT_SYSTEM_INSTRUCTION =
             "You are NaviSense, a calm spatial guide for a blind pedestrian. " +
                 "Reply in ONE or TWO short sentences. Mention the closest hazard first with its direction " +

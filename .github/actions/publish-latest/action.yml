@@ -1,0 +1,40 @@
+name: Publish to latest release
+description: Replaces this build's files on the rolling `latest` GitHub release (no Actions artifacts, so no storage quota).
+
+inputs:
+  files:
+    description: Space-separated paths/globs to upload. Assets with the same name are overwritten.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Publish to latest release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        FILES: ${{ inputs.files }}
+      run: |
+        set -euo pipefail
+
+        if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          VERSION="$GITHUB_REF_NAME"
+        else
+          VERSION="v$(grep '^version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)"
+        fi
+        TITLE="NaviSense $VERSION"
+        NOTES="Latest build from ${GITHUB_SHA::7} ($(date -u +%F)). Each APK build replaces its own files here. \`navisense-internal-*\` uses the App Check debug provider (for judges/testers sideloading); \`navisense-prod-*\` uses Play Integrity (install via Google Play)."
+
+        # Move the `latest` tag to the commit that was just built.
+        git tag -f latest "$GITHUB_SHA"
+        git push -f origin refs/tags/latest || echo "::warning::Could not move the latest tag; another build probably just did."
+
+        # The APK workflows run in parallel and race to create the release; the losers just upload.
+        gh release view latest >/dev/null 2>&1 \
+          || gh release create latest --verify-tag --title "$TITLE" --notes "$NOTES" --latest \
+          || true
+        gh release edit latest --title "$TITLE" --notes "$NOTES" --latest --draft=false --prerelease=false
+
+        # Leave $FILES unquoted so globs expand.
+        gh release upload latest $FILES --clobber

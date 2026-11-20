@@ -1,0 +1,47 @@
+name: Create Firebase and signing config
+
+description: >-
+  Decode the gitignored google-services.json (required) and the optional
+  release keystore + key.properties from repository secrets.
+
+inputs:
+  google_services_json_b64:
+    description: Base64-encoded android/app/google-services.json
+    required: true
+  upload_keystore_b64:
+    description: Base64-encoded release/upload keystore (.jks). Optional; without it the APK is debug-signed.
+    required: false
+    default: ''
+  key_properties_b64:
+    description: >-
+      Base64-encoded android/key.properties (storePassword, keyPassword,
+      keyAlias, storeFile=upload-keystore.jks). Optional.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Write config files
+      shell: bash
+      env:
+        GOOGLE_SERVICES_JSON_B64: ${{ inputs.google_services_json_b64 }}
+        UPLOAD_KEYSTORE_B64: ${{ inputs.upload_keystore_b64 }}
+        KEY_PROPERTIES_B64: ${{ inputs.key_properties_b64 }}
+      run: |
+        set -euo pipefail
+        if [ -z "$GOOGLE_SERVICES_JSON_B64" ]; then
+          echo "::error::GOOGLE_SERVICES_JSON_B64 is not configured. Run: base64 -i android/app/google-services.json | gh secret set GOOGLE_SERVICES_JSON_B64"
+          exit 1
+        fi
+        printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > android/app/google-services.json
+        test -s android/app/google-services.json
+
+        if [ -n "$UPLOAD_KEYSTORE_B64" ] && [ -n "$KEY_PROPERTIES_B64" ]; then
+          # storeFile in key.properties resolves relative to android/app.
+          printf '%s' "$UPLOAD_KEYSTORE_B64" | base64 --decode > android/app/upload-keystore.jks
+          printf '%s' "$KEY_PROPERTIES_B64" | base64 --decode > android/key.properties
+          echo "Release signing configured."
+        else
+          echo "::warning::UPLOAD_KEYSTORE_B64/KEY_PROPERTIES_B64 not set; APKs will be signed with the debug key."
+        fi
