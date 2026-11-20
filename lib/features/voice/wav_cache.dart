@@ -1,11 +1,11 @@
 import 'dart:convert';
-import 'dart:developer';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:navisense/core/utils/clock.dart';
+import 'package:navisense/core/utils/navi_log.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Provides [WavCache] configured with LRU eviction (20 MB / 200 files).

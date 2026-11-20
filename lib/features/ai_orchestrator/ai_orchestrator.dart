@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 import 'dart:ui' show PlatformDispatcher, TextDirection;
 
@@ -9,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:navisense/core/connectivity/connectivity_probe.dart';
 import 'package:navisense/core/errors/navi_failure.dart';
 import 'package:navisense/core/utils/clock.dart';
+import 'package:navisense/core/utils/navi_log.dart';
 import 'package:navisense/features/ai_orchestrator/cloud_reasoning_service.dart';
 import 'package:navisense/features/ai_orchestrator/deterministic_spatial_formatter.dart';
 import 'package:navisense/features/ai_orchestrator/models/guidance_result.dart';
@@ -128,6 +128,11 @@ final aiOrchestratorProvider =
 /// Coordinates Stage 0 perception, Tier 1 Gemini Nano 4, Tier 2 Cloud Prompt
 /// Templates + Cloud TTS, and Tier 3 deterministic edge fallback (`§2.7`).
 final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
+  /// Spoken in Tier 3 when Stage 0 perception itself failed (never claims the
+  /// path is clear when nothing was actually analyzed).
+  static const String perceptionFailedMessage =
+      'I could not analyze the scene. Please hold steady and tap again.';
+
   int _requestId = 0;
 
   @override
@@ -191,9 +196,11 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
     if (_isStale(myId)) return;
 
     SpatialSceneSummary summary;
+    var perceptionFailed = false;
     try {
       summary = await gateway.resolveFreshSummary(jpeg);
     } catch (e, st) {
+      perceptionFailed = true;
       // WHY: §4.7.3 — Perception failure is non-fatal; continue with empty summary.
       log(
         'Stage 0 perception failed; continuing with empty summary',
@@ -278,9 +285,13 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
     }
 
     // 3. Tier 3: Deterministic Edge Fallback (never goes silent).
-    final tier3Text = ref
-        .read(deterministicSpatialFormatterProvider)
-        .format(summary, textOnly: textOnly);
+    // WHY: An empty summary caused by a perception *failure* must never be
+    // spoken as "Path looks clear" to a blind user.
+    final tier3Text = perceptionFailed
+        ? perceptionFailedMessage
+        : ref
+            .read(deterministicSpatialFormatterProvider)
+            .format(summary, textOnly: textOnly);
     final cachedFile =
         await ref.read(cloudTtsServiceProvider).lookupCached(tier3Text);
     if (_isStale(myId)) return;

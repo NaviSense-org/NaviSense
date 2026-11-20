@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +7,7 @@ import 'package:google_mlkit_object_detection/google_mlkit_object_detection.dart
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:navisense/core/errors/navi_failure.dart';
 import 'package:navisense/core/utils/clock.dart';
+import 'package:navisense/core/utils/navi_log.dart';
 import 'package:navisense/features/mlkit_perception/models/spatial_scene_summary.dart';
 import 'package:navisense/features/mlkit_perception/spatial_math.dart';
 
@@ -213,7 +213,9 @@ final class MlKitPerceptionService {
         startedMs: startedMs,
       ).timeout(_timeout);
     } on TimeoutException {
-      throw const TimeoutFailure('ML Kit perception > 1000ms');
+      throw TimeoutFailure(
+        'ML Kit perception > ${_timeout.inMilliseconds}ms',
+      );
     } on PlatformException catch (e) {
       throw PerceptionFailure(e.message ?? 'ML Kit perception platform error');
     } catch (e) {

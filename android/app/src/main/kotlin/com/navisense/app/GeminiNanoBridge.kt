@@ -8,11 +8,14 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.SystemClock
 import android.provider.Settings
+import android.util.Log
 import com.google.firebase.Firebase
 import com.google.firebase.ai.DownloadStatus
 import com.google.firebase.ai.InferenceMode
+import com.google.firebase.ai.GenerativeModel
 import com.google.firebase.ai.InferenceSource
 import com.google.firebase.ai.OnDeviceConfig
+import com.google.firebase.ai.OnDeviceModelOption
 import com.google.firebase.ai.OnDeviceModelStatus
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.GenerativeBackend
@@ -65,13 +68,77 @@ class GeminiNanoBridge(
 
     private var downloadSink: EventChannel.EventSink? = null
 
-    private val model by lazy {
+    // WHY: Gemini Nano 4 ships through the AICore *preview* channel, while
+    // production devices expose the STABLE Nano build. We probe both and route
+    // to whichever is actually usable instead of hard-wiring one.
+    private val previewModel by lazy { buildModel(OnDeviceModelOption.PREVIEW) }
+    private val stableModel by lazy { buildModel(OnDeviceModelOption.STABLE) }
+
+    @Volatile private var activeModel: GenerativeModel? = null
+    @Volatile private var activeOption: String = "STABLE"
+    @Volatile private var activeModelName: String? = null
+    @Volatile private var warmedUp = false
+
+    private fun buildModel(option: OnDeviceModelOption): GenerativeModel =
         Firebase.ai(backend = GenerativeBackend.googleAI()).generativeModel(
             modelName = CLOUD_MODEL_FOR_HYBRID,
             systemInstruction = content { text(DEFAULT_SYSTEM_INSTRUCTION) },
-            onDeviceConfig = OnDeviceConfig(mode = InferenceMode.PREFER_ON_DEVICE),
+            onDeviceConfig = OnDeviceConfig(
+                mode = InferenceMode.PREFER_ON_DEVICE,
+                maxOutputTokens = 96,
+                temperature = 0.2f,
+                modelOption = option,
+            ),
         )
+
+    private suspend fun statusOf(model: GenerativeModel, label: String): OnDeviceModelStatus =
+        runCatching {
+            model.onDeviceExtension?.checkStatus() ?: OnDeviceModelStatus.UNAVAILABLE
+        }.onFailure { e ->
+            Log.w(TAG, "checkStatus($label) failed: ${e.javaClass.simpleName}: ${e.message}")
+        }.getOrDefault(OnDeviceModelStatus.UNAVAILABLE)
+
+    /**
+     * Picks the best on-device model: an AVAILABLE preview (Nano 4) model wins,
+     * then an AVAILABLE stable model, then a downloadable preview, then stable.
+     */
+    private suspend fun resolveModel(): Pair<GenerativeModel, OnDeviceModelStatus> {
+        val preview = statusOf(previewModel, "PREVIEW")
+        val stable = statusOf(stableModel, "STABLE")
+        Log.i(TAG, "on-device status preview=${mapStatus(preview)} stable=${mapStatus(stable)}")
+        val (chosen, option, status) = when {
+            preview == OnDeviceModelStatus.AVAILABLE -> Triple(previewModel, "PREVIEW", preview)
+            stable == OnDeviceModelStatus.AVAILABLE -> Triple(stableModel, "STABLE", stable)
+            preview == OnDeviceModelStatus.DOWNLOADING ||
+                preview == OnDeviceModelStatus.DOWNLOADABLE -> Triple(previewModel, "PREVIEW", preview)
+            else -> Triple(stableModel, "STABLE", stable)
+        }
+        if (activeModel !== chosen) warmedUp = false
+        activeModel = chosen
+        activeOption = option
+        if (status == OnDeviceModelStatus.AVAILABLE) {
+            activeModelName = runCatching { chosen.onDeviceExtension?.getModelName() }.getOrNull()
+            warmUpOnce(chosen)
+        }
+        return chosen to status
     }
+
+    private fun warmUpOnce(model: GenerativeModel) {
+        if (warmedUp) return
+        warmedUp = true
+        // WHY: The first AICore inference pays a multi-second model load; doing
+        // it at status time keeps the user's first tap inside the timeout.
+        scope.launch {
+            runCatching { model.onDeviceExtension?.warmUp() }
+                .onSuccess { Log.i(TAG, "Gemini Nano warm-up done ($activeOption, $activeModelName)") }
+                .onFailure { e ->
+                    warmedUp = false
+                    Log.w(TAG, "Gemini Nano warm-up failed: ${e.message}")
+                }
+        }
+    }
+
+    private suspend fun currentModel(): GenerativeModel = activeModel ?: resolveModel().first
 
     override fun onMethodCall(call: MethodCall, rawResult: MethodChannel.Result) {
         val result = SafeResult(rawResult)
@@ -79,6 +146,13 @@ class GeminiNanoBridge(
             "getStatus" -> handleGetStatus(result)
             "startDownload" -> handleStartDownload(result)
             "generate" -> handleGenerate(call, result)
+            "getModelInfo" -> result.success(
+                mapOf("option" to activeOption, "modelName" to activeModelName),
+            )
+            "hasCameraPermission" -> result.success(
+                context.checkSelfPermission(android.Manifest.permission.CAMERA) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED,
+            )
             "getDeviceMemoryClass" -> handleGetDeviceMemoryClass(result)
             "compressJpeg" -> handleCompressJpeg(call, result)
             "openAppSettings" -> handleOpenAppSettings(result)
@@ -88,10 +162,9 @@ class GeminiNanoBridge(
 
     private fun handleGetStatus(result: SafeResult) {
         scope.launch {
-            val mapped = runCatching {
-                val status = model.onDeviceExtension?.checkStatus() ?: OnDeviceModelStatus.UNAVAILABLE
-                mapStatus(status)
-            }.getOrDefault("UNAVAILABLE")
+            val mapped = runCatching { mapStatus(resolveModel().second) }
+                .onFailure { e -> Log.w(TAG, "getStatus failed: ${e.message}") }
+                .getOrDefault("UNAVAILABLE")
             result.success(mapped)
         }
     }
@@ -100,7 +173,7 @@ class GeminiNanoBridge(
         scope.launch {
             var totalBytes = 0L
             runCatching {
-                val extension = model.onDeviceExtension
+                val extension = currentModel().onDeviceExtension
                     ?: throw IllegalStateException("OnDeviceExtension is unavailable")
                 extension.download().collect { progress ->
                     when (progress) {
@@ -112,9 +185,11 @@ class GeminiNanoBridge(
                             emitDownloadEvent("DOWNLOADING", progress.totalBytesDownloaded, totalBytes)
                         }
                         is DownloadStatus.DownloadCompleted -> {
+                            warmedUp = false
                             emitDownloadEvent("COMPLETED", totalBytes, totalBytes)
                         }
                         is DownloadStatus.DownloadFailed -> {
+                            Log.w(TAG, "Gemini Nano download failed", progress.exception)
                             withContext(Dispatchers.Main) {
                                 downloadSink?.error(
                                     "NANO_FAILED",
@@ -173,8 +248,9 @@ class GeminiNanoBridge(
                 } ?: throw IllegalArgumentException("Failed to decode JPEG snapshot")
 
                 val decodedBitmap = bitmap
+                val activeModel = currentModel()
                 val response = withTimeout(NANO_TIMEOUT_MS) {
-                    model.generateContent(
+                    activeModel.generateContent(
                         content {
                             image(decodedBitmap)
                             text(promptText)
@@ -191,6 +267,11 @@ class GeminiNanoBridge(
                 } else {
                     "IN_CLOUD"
                 }
+                Log.i(
+                    TAG,
+                    "generate ok source=$source option=$activeOption model=$activeModelName " +
+                        "latencyMs=${SystemClock.elapsedRealtime() - started}",
+                )
                 result.success(
                     mapOf(
                         "text" to text,
@@ -199,8 +280,10 @@ class GeminiNanoBridge(
                     ),
                 )
             } catch (_: TimeoutCancellationException) {
+                Log.w(TAG, "generate timed out after ${NANO_TIMEOUT_MS}ms (option=$activeOption)")
                 result.error("NANO_TIMEOUT", "On-device inference exceeded ${NANO_TIMEOUT_MS}ms", null)
             } catch (e: Exception) {
+                Log.w(TAG, "generate failed (option=$activeOption): ${e.javaClass.simpleName}: ${e.message}", e)
                 result.error("NANO_FAILED", e.message ?: "On-device inference failed", null)
             } finally {
                 if (bitmap != null && !bitmap.isRecycled) {
@@ -320,10 +403,18 @@ class GeminiNanoBridge(
     companion object {
         const val METHOD_CHANNEL = "navisense/gemini_nano"
         const val DOWNLOAD_EVENT_CHANNEL = "navisense/gemini_nano/download"
-        const val NANO_TIMEOUT_MS = 4000L
+        private const val TAG = "NaviSenseNano"
+        // WHY: Covers AICore image encoding + generation, and (under
+        // PREFER_ON_DEVICE) the SDK's own automatic cloud fallback, both of
+        // which must fit in one budget. 4 s left no headroom for either.
+        const val NANO_TIMEOUT_MS = 8000L
         const val DEFAULT_MAX_EDGE = 768
         const val DEFAULT_JPEG_QUALITY = 70
-        const val CLOUD_MODEL_FOR_HYBRID = "gemini-3-flash"
+        // WHY: The previous "gemini-3-flash" is not a documented model ID
+        // (Gemini 3 Flash shipped as "gemini-3-flash-preview"; the official
+        // Android hybrid sample uses "gemini-3.5-flash"). An invalid ID makes
+        // every PREFER_ON_DEVICE cloud fallback fail.
+        const val CLOUD_MODEL_FOR_HYBRID = "gemini-3.5-flash"
         const val DEFAULT_SYSTEM_INSTRUCTION =
             "You are NaviSense, a calm spatial guide for a blind pedestrian. " +
                 "Reply in ONE or TWO short sentences. Mention the closest hazard first with its direction " +

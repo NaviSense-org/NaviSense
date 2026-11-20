@@ -279,6 +279,25 @@ void main() {
       verify(() => ttsEngine.speak(result.text)).called(1);
     });
 
+    test(
+        '3b. Stage 0 failure + offline never claims "Path looks clear" '
+        '(safety)', () async {
+      isOffline = true;
+      when(() => gateway.resolveFreshSummary(any())).thenThrow(
+        const TimeoutFailure('ML Kit perception > 1000ms'),
+      );
+
+      final container = makeContainer();
+      await container.read(aiOrchestratorProvider.notifier).describe();
+
+      final result = container.read(aiOrchestratorProvider).value!;
+      expect(result.tier, const Tier3Edge());
+      expect(result.text, AiOrchestrator.perceptionFailedMessage);
+      expect(result.text, isNot(contains('clear')));
+      verify(() => ttsEngine.speak(AiOrchestrator.perceptionFailedMessage))
+          .called(1);
+    });
+
     test('4. Nano unavailable + online + success -> Tier2, playFile called',
         () async {
       when(

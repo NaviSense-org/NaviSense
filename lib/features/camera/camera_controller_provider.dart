@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:developer';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:navisense/core/errors/navi_failure.dart';
+import 'package:navisense/core/utils/navi_log.dart';
 import 'package:navisense/features/camera/camera_service.dart';
 
 /// Permission state surfaced by [CameraControllerNotifier] when denied.
@@ -55,7 +55,12 @@ final class CameraControllerNotifier extends AsyncNotifier<CameraController?>
     try {
       if (!_spokeRationaleThisSession) {
         _spokeRationaleThisSession = true;
-        await service.speakPermissionRationale();
+        // WHY: Previously spoken on every cold start ("I need camera access")
+        // even when already granted, delaying camera init by ~5 s and
+        // colliding with the onboarding utterance in flutter_tts.
+        if (!await nativeBridge.hasCameraPermission()) {
+          await service.speakPermissionRationale();
+        }
       }
 
       final memInfo = await nativeBridge.getDeviceMemoryClass();

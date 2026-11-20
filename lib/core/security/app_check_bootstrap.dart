@@ -1,7 +1,6 @@
-import 'dart:developer';
-
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
+import 'package:navisense/core/utils/navi_log.dart';
 
 /// Bootstraps Firebase App Check for Android-only builds.
 ///

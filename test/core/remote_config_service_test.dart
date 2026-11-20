@@ -97,7 +97,12 @@ void main() {
         service.activePromptTemplate,
         RemoteConfigService.defaultPromptTemplate,
       );
-      expect(service.cloudTimeout, const Duration(milliseconds: 1500));
+      expect(
+        service.cloudTimeout,
+        const Duration(
+          milliseconds: RemoteConfigService.defaultCloudTimeoutMs,
+        ),
+      );
       expect(service.ttsVoiceName, 'Kore');
       expect(service.enableCloudTts, isTrue);
     });
@@ -118,7 +123,12 @@ void main() {
         service.activePromptTemplate,
         RemoteConfigService.defaultPromptTemplate,
       );
-      expect(service.cloudTimeout, const Duration(milliseconds: 1500));
+      expect(
+        service.cloudTimeout,
+        const Duration(
+          milliseconds: RemoteConfigService.defaultCloudTimeoutMs,
+        ),
+      );
       expect(service.ttsVoiceName, 'Kore');
       expect(service.enableCloudTts, isFalse);
 

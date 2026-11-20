@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:developer';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:navisense/core/errors/navi_failure.dart';
+import 'package:navisense/core/utils/navi_log.dart';
 
 /// Typed seam over `FlutterTts` enabling unit tests without platform channels.
 abstract interface class TtsEngine {

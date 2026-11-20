@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:developer';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:navisense/core/errors/navi_failure.dart';
+import 'package:navisense/core/utils/navi_log.dart';
 
 /// Availability state of the on-device Gemini Nano 4 model via AICore.
 enum NanoStatus { available, downloadable, downloading, unavailable }
@@ -177,7 +177,7 @@ final class NanoBridge implements NanoBridgeClient {
   NanoBridge({
     MethodChannel? methodChannel,
     EventChannel? downloadChannel,
-    Duration generateTimeout = const Duration(milliseconds: 4500),
+    Duration generateTimeout = const Duration(milliseconds: 9000),
   })  : _methodChannel = methodChannel ?? _defaultMethodChannel,
         _downloadChannel = downloadChannel ?? _defaultDownloadChannel,
         _generateTimeout = generateTimeout;
@@ -300,7 +300,7 @@ final class NanoBridge implements NanoBridgeClient {
 
       return _parseGenerateResult(raw);
     } on TimeoutException {
-      throw const TimeoutFailure('Nano bridge exceeded 4500ms');
+      throw const TimeoutFailure('Nano bridge exceeded 9000ms');
     } on PlatformException catch (e) {
       throw NanoFailure(
         e.message ?? 'Gemini Nano inference failed',

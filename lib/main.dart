@@ -1,11 +1,10 @@
-import 'dart:developer';
-
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:navisense/app.dart';
 import 'package:navisense/core/config/remote_config_service.dart';
 import 'package:navisense/core/security/app_check_bootstrap.dart';
+import 'package:navisense/core/utils/navi_log.dart';
 
 /// Entry point for the NaviSense Android spatial-guidance application.
 Future<void> main() async {

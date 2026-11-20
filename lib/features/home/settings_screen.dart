@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:navisense/core/theme/navi_colors.dart';
 import 'package:navisense/core/utils/clock.dart';
+import 'package:navisense/core/utils/navi_log.dart';
 import 'package:navisense/features/voice/local_tts_service.dart';
 import 'package:navisense/features/voice/wav_cache.dart';
 import 'package:path_provider/path_provider.dart';
@@ -195,17 +195,38 @@ final settingsProvider = NotifierProvider<SettingsNotifier, SettingsState>(
 final class SettingsNotifier extends Notifier<SettingsState> {
   static const int _sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
 
+  Future<void>? _hydration;
+
+  /// Completes once persisted settings have been loaded from disk.
+  ///
+  /// WHY: `build()` returns defaults synchronously, so callers that branch on
+  /// persisted values (onboarding) or write settings must await this first;
+  /// otherwise onboarding replays every cold start and a pre-hydration save
+  /// overwrites the user's stored preferences with defaults.
+  Future<void> get hydrated => _hydration ?? Future<void>.value();
+
   @override
   SettingsState build() {
-    unawaited(_hydrate());
+    final hydration = _hydrate();
+    _hydration = hydration;
+    unawaited(hydration);
     return const SettingsState();
   }
 
   Future<void> _hydrate() async {
-    final loaded = await ref.read(settingsStorageProvider).load();
-    if (!ref.mounted || loaded == null) return;
-    state = loaded;
-    await ref.read(localTtsServiceProvider).setRate(loaded.speechRate);
+    try {
+      final loaded = await ref.read(settingsStorageProvider).load();
+      if (!ref.mounted || loaded == null) return;
+      state = loaded;
+      await ref.read(localTtsServiceProvider).setRate(loaded.speechRate);
+    } catch (e, st) {
+      log(
+        'Settings hydration failed; using defaults',
+        name: 'navisense.settings',
+        error: e,
+        stackTrace: st,
+      );
+    }
   }
 
   /// Updates the local TTS speech rate (`0.30`–`0.70`) and persists it.
@@ -246,6 +267,7 @@ final class SettingsNotifier extends Notifier<SettingsState> {
 
   /// Marks first-launch onboarding complete.
   Future<void> markOnboardingCompleted() async {
+    await hydrated;
     if (state.onboardingCompleted) return;
     state = state.copyWith(onboardingCompleted: true);
     await ref.read(settingsStorageProvider).save(state);

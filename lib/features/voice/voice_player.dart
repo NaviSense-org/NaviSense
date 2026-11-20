@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:navisense/core/errors/navi_failure.dart';
+import 'package:navisense/core/utils/navi_log.dart';
 import 'package:navisense/features/voice/local_tts_service.dart';
 
 /// Abstracts `AudioPlayer` for deterministic unit testing.

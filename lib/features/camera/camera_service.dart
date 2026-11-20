@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
@@ -8,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:navisense/core/errors/navi_failure.dart';
 import 'package:navisense/core/utils/clock.dart';
+import 'package:navisense/core/utils/navi_log.dart';
 
 /// Device memory metrics returned by native Android `getDeviceMemoryClass`.
 final class DeviceMemoryInfo {
@@ -42,6 +42,9 @@ abstract interface class CameraNativeBridge {
 
   /// Opens Android application settings so the user can grant camera access.
   Future<void> openAppSettings();
+
+  /// Whether the Android `CAMERA` runtime permission is already granted.
+  Future<bool> hasCameraPermission();
 }
 
 /// Production [CameraNativeBridge] backed by `navisense/gemini_nano`.
@@ -103,6 +106,23 @@ final class MethodChannelCameraNativeBridge implements CameraNativeBridge {
         stackTrace: st,
       );
       return const DeviceMemoryInfo(memoryClassMb: 256, totalMemBytes: 0);
+    }
+  }
+
+  @override
+  Future<bool> hasCameraPermission() async {
+    try {
+      return await _channel.invokeMethod<bool>('hasCameraPermission') ?? false;
+    } on PlatformException catch (e, st) {
+      log(
+        'hasCameraPermission failed; assuming not granted',
+        name: 'navisense.camera',
+        error: e,
+        stackTrace: st,
+      );
+      return false;
+    } on MissingPluginException {
+      return false;
     }
   }
 

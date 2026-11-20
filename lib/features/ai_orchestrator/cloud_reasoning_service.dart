@@ -64,7 +64,7 @@ final cloudReasoningServiceProvider = Provider<CloudReasoningService>((ref) {
 });
 
 /// Tier 2 Cloud Reasoning service executing Firebase Server Prompt Templates
-/// (`navisense_nav_prompt_v1` / `v2`) within the strict 1500 ms budget.
+/// (`navisense_nav_prompt_v1` / `v2`) within the Remote Config `cloud_timeout_ms` budget.
 final class CloudReasoningService {
   /// Creates a [CloudReasoningService].
   CloudReasoningService({
@@ -74,8 +74,10 @@ final class CloudReasoningService {
     Clock? clock,
   })  : _client = client,
         _templateIdReader = templateIdReader,
-        _timeoutReader =
-            timeoutReader ?? (() => const Duration(milliseconds: 1500)),
+        _timeoutReader = timeoutReader ??
+            (() => const Duration(
+                  milliseconds: RemoteConfigService.defaultCloudTimeoutMs,
+                )),
         _clock = clock ?? const SystemClock();
 
   final TemplateReasoningClient _client;

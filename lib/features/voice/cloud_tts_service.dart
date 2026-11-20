@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -8,6 +7,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:navisense/core/config/remote_config_service.dart';
 import 'package:navisense/core/errors/navi_failure.dart';
+import 'package:navisense/core/utils/navi_log.dart';
 import 'package:navisense/features/voice/wav_cache.dart';
 import 'package:navisense/features/voice/wav_codec.dart';
 
@@ -108,8 +108,10 @@ final class CloudTtsService {
   })  : _cache = cache,
         _client = client,
         _voiceNameReader = voiceNameReader ?? (() => defaultVoiceName),
-        _timeoutReader =
-            timeoutReader ?? (() => const Duration(milliseconds: 1500)),
+        _timeoutReader = timeoutReader ??
+            (() => const Duration(
+                  milliseconds: RemoteConfigService.defaultCloudTimeoutMs,
+                )),
         _enabledReader = enabledReader ?? (() => true);
 
   /// Cloud TTS Gemini model ID (`2-architecture.md` §2.5).
@@ -132,7 +134,7 @@ final class CloudTtsService {
   }
 
   /// Returns a cached `.wav` file for [text], or synthesizes one via Cloud TTS
-  /// within the configured 1500 ms budget and stores it atomically in [WavCache].
+  /// within the configured `cloud_timeout_ms` budget and stores it atomically in [WavCache].
   ///
   /// Throws [VoiceFailure] / [TimeoutFailure] / [NetworkFailure] / [FirebaseAiFailure]
   /// so `AiOrchestrator` fails over cleanly to `LocalTtsService`.

@@ -5,8 +5,10 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:navisense/core/errors/navi_failure.dart';
 import 'package:navisense/core/theme/navi_colors.dart';
 import 'package:navisense/core/utils/haptics.dart';
+import 'package:navisense/core/utils/navi_log.dart';
 import 'package:navisense/features/ai_orchestrator/ai_orchestrator.dart';
 import 'package:navisense/features/ai_orchestrator/models/guidance_result.dart';
 import 'package:navisense/features/camera/camera_controller_provider.dart';
@@ -192,12 +194,19 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
               sensorOrientation: controller.description.sensorOrientation,
               deviceOrientation: controller.value.deviceOrientation,
             );
-            final summary = await mlKit.perceive(
-              input.image,
-              frameSize: input.frameSize,
-            );
-            if (!mounted) return;
-            ref.read(perceptionProvider.notifier).update(summary);
+            try {
+              final summary = await mlKit.perceive(
+                input.image,
+                frameSize: input.frameSize,
+              );
+              if (!mounted) return;
+              ref.read(perceptionProvider.notifier).update(summary);
+            } on NaviFailure catch (e) {
+              // WHY: A slow/failed background frame is expected (cold ML Kit
+              // model load, low-end CPU); drop it instead of surfacing an
+              // unhandled async exception every 700 ms.
+              log('Stream frame dropped', name: 'navisense.mlkit', error: e);
+            }
           }),
         );
         if (!_announcedCameraReady) {
@@ -277,16 +286,33 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
       });
     }
 
-    if (!_ranOnboarding && !settings.onboardingCompleted) {
+    if (!_ranOnboarding) {
       _ranOnboarding = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
-        await ref.read(settingsProvider.notifier).markOnboardingCompleted();
+        final settingsNotifier = ref.read(settingsProvider.notifier);
+        await settingsNotifier.hydrated;
+        if (!mounted || ref.read(settingsProvider).onboardingCompleted) return;
+        await settingsNotifier.markOnboardingCompleted();
+        // WHY: Wait for the camera permission rationale/prompt to finish so
+        // the two utterances don't race; flutter_tts rejects a second
+        // `speak` while one is in flight (returns 0 -> VoiceFailure).
+        try {
+          await ref
+              .read(cameraControllerProvider.future)
+              .timeout(const Duration(seconds: 20));
+        } catch (_) {
+          // Permission denied / timeout: still give the hint below.
+        }
         if (!mounted) return;
-        await ref.read(localTtsServiceProvider).speak(
-              'Hold your phone at chest height, camera facing forward. '
-              'Tap anywhere to hear what is ahead. Hold to read text.',
-            );
+        try {
+          await ref.read(localTtsServiceProvider).speak(
+                'Hold your phone at chest height, camera facing forward. '
+                'Tap anywhere to hear what is ahead. Hold to read text.',
+              );
+        } on NaviFailure catch (e) {
+          log('Onboarding hint not spoken', name: 'navisense.home', error: e);
+        }
       });
     }
   }

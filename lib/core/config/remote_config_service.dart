@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:ui' show PlatformDispatcher, TextDirection;
 
 import 'package:firebase_core/firebase_core.dart';
@@ -7,6 +6,7 @@ import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:navisense/core/utils/navi_log.dart';
 
 /// Optional [FirebaseRemoteConfig] provider; returns `null` when Firebase is
 /// uninitialized (for example in isolated tests).
@@ -58,7 +58,12 @@ final class RemoteConfigService {
   static const String v2PromptTemplate = 'navisense_nav_prompt_v2';
 
   /// Default cloud stage timeout in milliseconds.
-  static const int defaultCloudTimeoutMs = 1500;
+  ///
+  /// WHY: A multimodal Gemini Flash call (768 px JPEG + prompt) through the
+  /// Firebase AI Logic proxy is typically 1.5–4 s end to end on mobile data.
+  /// The old 1500 ms budget made Tier 2 time out on most taps and silently
+  /// degrade every request to the Tier 3 ML Kit formatter.
+  static const int defaultCloudTimeoutMs = 6000;
 
   /// Default Cloud TTS voice name.
   static const String defaultTtsVoiceName = 'Kore';
