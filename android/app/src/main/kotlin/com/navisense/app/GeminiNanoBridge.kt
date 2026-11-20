@@ -9,15 +9,14 @@ import android.net.Uri
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
-import com.google.firebase.Firebase
 import com.google.firebase.ai.DownloadStatus
+import com.google.firebase.ai.FirebaseAI
 import com.google.firebase.ai.InferenceMode
 import com.google.firebase.ai.GenerativeModel
 import com.google.firebase.ai.InferenceSource
 import com.google.firebase.ai.OnDeviceConfig
 import com.google.firebase.ai.OnDeviceModelOption
 import com.google.firebase.ai.OnDeviceModelStatus
-import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.GenerativeBackend
 import com.google.firebase.ai.type.PublicPreviewAPI
 import com.google.firebase.ai.type.content
@@ -80,7 +79,9 @@ class GeminiNanoBridge(
     @Volatile private var warmedUp = false
 
     private fun buildModel(option: OnDeviceModelOption): GenerativeModel =
-        Firebase.ai(backend = GenerativeBackend.googleAI()).generativeModel(
+        // WHY: App Check replay protection is enforced for Firebase AI Logic, so
+        // the cloud fallback must use limited-use (single-use) tokens.
+        FirebaseAI.getInstance(GenerativeBackend.googleAI(), true).generativeModel(
             modelName = CLOUD_MODEL_FOR_HYBRID,
             systemInstruction = content { text(DEFAULT_SYSTEM_INSTRUCTION) },
             onDeviceConfig = OnDeviceConfig(

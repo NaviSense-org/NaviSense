@@ -58,7 +58,11 @@ final class FirebaseCloudTtsClient implements CloudTtsClient {
     required String voiceName,
     required String model,
   }) async {
-    final ai = _firebaseAi ?? FirebaseAI.googleAI();
+    // WHY: Firebase AI Logic has App Check replay protection enforced, so
+    // every request needs a fresh limited-use token (reused tokens are
+    // rejected as "App Check token is invalid").
+    final ai =
+        _firebaseAi ?? FirebaseAI.googleAI(useLimitedUseAppCheckTokens: true);
     final ttsModel = ai.generativeModel(
       model: model,
       generationConfig: GenerationConfig(

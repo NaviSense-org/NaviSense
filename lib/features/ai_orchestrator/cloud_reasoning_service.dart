@@ -38,7 +38,11 @@ final class FirebaseTemplateReasoningClient implements TemplateReasoningClient {
     String templateId, {
     required Map<String, Object?> inputs,
   }) async {
-    final ai = _firebaseAi ?? FirebaseAI.googleAI();
+    // WHY: Firebase AI Logic has App Check replay protection enforced, so
+    // every request needs a fresh limited-use token (reused tokens are
+    // rejected as "App Check token is invalid").
+    final ai =
+        _firebaseAi ?? FirebaseAI.googleAI(useLimitedUseAppCheckTokens: true);
     // ignore: experimental_member_use
     final model = ai.templateGenerativeModel();
     // ignore: experimental_member_use
@@ -87,7 +91,11 @@ final class FirebaseGeminiReasoningClient implements TemplateReasoningClient {
     String templateId, {
     required Map<String, Object?> inputs,
   }) async {
-    final ai = _firebaseAi ?? FirebaseAI.googleAI();
+    // WHY: Firebase AI Logic has App Check replay protection enforced, so
+    // every request needs a fresh limited-use token (reused tokens are
+    // rejected as "App Check token is invalid").
+    final ai =
+        _firebaseAi ?? FirebaseAI.googleAI(useLimitedUseAppCheckTokens: true);
     final locale = (inputs['locale'] as String?) ?? 'en';
     final model = ai.generativeModel(
       model: _modelReader(),
