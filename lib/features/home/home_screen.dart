@@ -189,6 +189,9 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
         final handle = FlutterCameraStreamHandle(controller);
         unawaited(
           cameraService.startStream(handle, (CameraImage image) async {
+            // WHY: Skip (don't queue) background frames while an on-tap
+            // snapshot pass holds the single ML Kit slot.
+            if (mlKit.isBusy) return;
             final input = MlKitPerceptionService.inputFromNv21CameraImage(
               cameraImage: image,
               sensorOrientation: controller.description.sensorOrientation,

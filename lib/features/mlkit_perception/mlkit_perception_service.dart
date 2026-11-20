@@ -118,6 +118,13 @@ final class MlKitPerceptionService {
   final Clock _clock;
   final Duration _timeout;
 
+  Future<void> _slot = Future<void>.value();
+  bool _busy = false;
+
+  /// Whether an ML Kit pass is currently running (stream frames skip instead
+  /// of queueing behind it).
+  bool get isBusy => _busy;
+
   /// Builds an [InputImage] and rotation-corrected frame [Size] from an NV21
   /// [CameraImage] without retaining the [CameraImage] buffer.
   static ({InputImage image, Size frameSize}) inputFromNv21CameraImage({
@@ -201,17 +208,35 @@ final class MlKitPerceptionService {
   }
 
   /// Runs Stage 0 sequential detection + fusion + OCR filtering within [_timeout].
+  ///
+  /// Passes are serialized: at most one ML Kit run is ever in flight, and the
+  /// slot is held until native work actually finishes (even after a caller
+  /// times out), so stream frames and on-tap snapshots never stack native
+  /// heap allocations on 3 GB RAM devices.
   Future<SpatialSceneSummary> perceive(
     InputImage inputImage, {
     required Size frameSize,
   }) async {
+    final previous = _slot;
+    final release = Completer<void>();
+    _slot = release.future;
+    await previous;
+    _busy = true;
+
     final startedMs = _clock.nowMs();
+    final run = _runSequential(
+      inputImage,
+      frameSize: frameSize,
+      startedMs: startedMs,
+    );
+    unawaited(
+      run.then<void>((_) {}, onError: (Object _) {}).whenComplete(() {
+        _busy = false;
+        release.complete();
+      }),
+    );
     try {
-      return await _runSequential(
-        inputImage,
-        frameSize: frameSize,
-        startedMs: startedMs,
-      ).timeout(_timeout);
+      return await run.timeout(_timeout);
     } on TimeoutException {
       throw TimeoutFailure(
         'ML Kit perception > ${_timeout.inMilliseconds}ms',

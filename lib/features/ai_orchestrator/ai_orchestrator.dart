@@ -176,6 +176,7 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
     if (_isStale(myId)) return;
 
     state = const AsyncLoading();
+    final startedMs = clock.nowMs();
 
     final gateway = ref.read(orchestratorPerceptionGatewayProvider);
     final Uint8List jpeg;
@@ -194,39 +195,33 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
       return;
     }
     if (_isStale(myId)) return;
+    final captureMs = clock.nowMs() - startedMs;
 
-    SpatialSceneSummary summary;
-    var perceptionFailed = false;
-    try {
-      summary = await gateway.resolveFreshSummary(jpeg);
-    } catch (e, st) {
-      perceptionFailed = true;
-      // WHY: §4.7.3 — Perception failure is non-fatal; continue with empty summary.
-      log(
-        'Stage 0 perception failed; continuing with empty summary',
-        name: 'navisense.orchestrator',
-        error: e,
-        stackTrace: st,
-      );
-      summary = SpatialSceneSummary.empty(clock.now());
-    }
-    if (_isStale(myId)) return;
+    // WHY: Stage 0, the Nano status check, and the connectivity probe are
+    // independent, so they start together instead of queueing (~1 s saved per
+    // tap). Only Stage 0 is CPU/RAM-heavy, and MlKitPerceptionService
+    // serializes its own passes, so this never runs two ML Kit jobs at once
+    // on 3 GB devices.
+    final summaryFuture = _resolveSummary(gateway, jpeg);
+    final nanoStatusFuture = _currentNanoStatus();
+    final offlineFuture = _probeOffline();
 
     // 1. Try Tier 1 (Gemini Nano 4 via OnDeviceExtension) when AVAILABLE.
-    final nanoBridge = ref.read(nanoBridgeProvider);
-    var nanoStatus = ref.read(nanoStatusProvider).value;
-    nanoStatus ??= await nanoBridge.getStatus();
+    final nanoStatus = await nanoStatusFuture;
     if (_isStale(myId)) return;
 
     if (nanoStatus == NanoStatus.available) {
+      final stage0 = await summaryFuture;
+      if (_isStale(myId)) return;
+      final summary = stage0.summary;
       try {
         final summaryInput = textOnly
             ? 'Read all visible text verbatim. ${summary.toPromptString()}'
             : summary.toPromptString();
-        final nanoRes = await nanoBridge.generate(
-          jpeg: jpeg,
-          summary: summaryInput,
-        );
+        final nanoRes = await ref.read(nanoBridgeProvider).generate(
+              jpeg: jpeg,
+              summary: summaryInput,
+            );
         if (_isStale(myId)) return;
 
         final inCloud = nanoRes.inferenceSource == NanoInferenceSource.inCloud;
@@ -243,6 +238,12 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
           hasVeryCloseObstacle: summary.hasVeryCloseObstacle,
         );
         telemetry.updateFromResult(result);
+        _logTiming(
+          inCloud ? 'tier1_cloud' : 'tier1_nano',
+          startedMs: startedMs,
+          captureMs: captureMs,
+          inferenceMs: nanoRes.latencyMs,
+        );
         await _deliverLocalVoice(result, myId);
         return;
       } on NaviFailure catch (e, st) {
@@ -256,20 +257,30 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
       if (_isStale(myId)) return;
     }
 
-    // 2. Try Tier 2 (Cloud Server Prompt Templates + Cloud TTS) when online.
-    final offline = await ref.read(connectivityProbeProvider).isOffline();
+    // 2. Try Tier 2 (Cloud Gemini + Cloud TTS) when online.
+    final offline = await offlineFuture;
     if (_isStale(myId)) return;
 
     if (!offline) {
+      // WHY: Gemini sees the photo itself; Stage 0 is only a hint, so the
+      // cloud call must not queue behind a slow ML Kit pass.
+      final hint = await _cloudHint(summaryFuture);
+      if (_isStale(myId)) return;
       try {
         final cloudRes = await ref
             .read(cloudReasoningServiceProvider)
-            .reason(jpeg: jpeg, summary: summary, textOnly: textOnly);
+            .reason(jpeg: jpeg, summary: hint, textOnly: textOnly);
         if (_isStale(myId)) return;
 
+        _logTiming(
+          'tier2_cloud',
+          startedMs: startedMs,
+          captureMs: captureMs,
+          inferenceMs: cloudRes.latencyMs,
+        );
         await _deliverCloudVoice(
           cloudRes: cloudRes,
-          summary: summary,
+          summary: hint,
           myId: myId,
         );
         return;
@@ -283,6 +294,12 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
       }
       if (_isStale(myId)) return;
     }
+
+    final stage0 = await summaryFuture;
+    if (_isStale(myId)) return;
+    final summary = stage0.summary;
+    final perceptionFailed = stage0.failed;
+    _logTiming('tier3_edge', startedMs: startedMs, captureMs: captureMs);
 
     // 3. Tier 3: Deterministic Edge Fallback (never goes silent).
     // WHY: An empty summary caused by a perception *failure* must never be
@@ -325,6 +342,82 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
     await _deliverLocalVoice(tier3Result, myId);
   }
 
+  /// How long Tier 2 waits for Gemini TTS audio before speaking the cloud text
+  /// with the local voice (synthesis keeps running to warm the WAV cache).
+  static const Duration cloudVoiceWaitBudget = Duration(milliseconds: 1500);
+
+  /// How long the cloud call waits for an in-flight Stage 0 pass to use as a
+  /// hint before falling back to the latest stream summary.
+  static const Duration cloudHintGrace = Duration(milliseconds: 150);
+
+  Future<({SpatialSceneSummary summary, bool failed})> _resolveSummary(
+    OrchestratorPerceptionGateway gateway,
+    Uint8List jpeg,
+  ) async {
+    try {
+      return (summary: await gateway.resolveFreshSummary(jpeg), failed: false);
+    } catch (e, st) {
+      // WHY: §4.7.3 — Perception failure is non-fatal; continue with empty summary.
+      log(
+        'Stage 0 perception failed; continuing with empty summary',
+        name: 'navisense.orchestrator',
+        error: e,
+        stackTrace: st,
+      );
+      return (
+        summary: SpatialSceneSummary.empty(ref.read(clockProvider).now()),
+        failed: true,
+      );
+    }
+  }
+
+  Future<SpatialSceneSummary> _cloudHint(
+    Future<({SpatialSceneSummary summary, bool failed})> summaryFuture,
+  ) async {
+    SpatialSceneSummary fallback() =>
+        ref.read(perceptionProvider) ??
+        SpatialSceneSummary.empty(ref.read(clockProvider).now());
+    try {
+      final stage0 = await summaryFuture.timeout(cloudHintGrace);
+      return stage0.failed ? fallback() : stage0.summary;
+    } on TimeoutException {
+      return fallback();
+    }
+  }
+
+  Future<NanoStatus> _currentNanoStatus() async {
+    final cached = ref.read(nanoStatusProvider).value;
+    if (cached != null) return cached;
+    try {
+      return await ref.read(nanoBridgeProvider).getStatus();
+    } catch (_) {
+      return NanoStatus.unavailable;
+    }
+  }
+
+  Future<bool> _probeOffline() async {
+    try {
+      return await ref.read(connectivityProbeProvider).isOffline();
+    } catch (_) {
+      // Unknown connectivity: attempt the cloud; its own timeout bounds it.
+      return false;
+    }
+  }
+
+  void _logTiming(
+    String tier, {
+    required int startedMs,
+    required int captureMs,
+    int? inferenceMs,
+  }) {
+    final totalMs = ref.read(clockProvider).nowMs() - startedMs;
+    log(
+      'timing tier=$tier totalMs=$totalMs captureMs=$captureMs'
+      '${inferenceMs == null ? '' : ' inferenceMs=$inferenceMs'}',
+      name: 'navisense.orchestrator',
+    );
+  }
+
   Future<void> _deliverCloudVoice({
     required CloudReasoningResult cloudRes,
     required SpatialSceneSummary summary,
@@ -333,9 +426,14 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
     final telemetry = ref.read(telemetryProvider.notifier);
     final voicePlayer = ref.read(voicePlayerProvider);
 
+    // WHY: Gemini TTS is a second full round trip (observed > 6 s on mobile
+    // data). Wait only briefly; otherwise speak now with the local voice and
+    // let synthesis finish in the background so a repeat plays cached audio.
+    final ttsFuture = ref.read(cloudTtsServiceProvider).synthesize(
+          cloudRes.text,
+        );
     try {
-      final ttsRes =
-          await ref.read(cloudTtsServiceProvider).synthesize(cloudRes.text);
+      final ttsRes = await ttsFuture.timeout(cloudVoiceWaitBudget);
       if (_isStale(myId)) return;
 
       final result = GuidanceResult(
@@ -352,6 +450,22 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
 
       await voicePlayer.playFile(ttsRes.file);
       return;
+    } on TimeoutException {
+      unawaited(
+        ttsFuture.then(
+          (_) => log('Cloud voice cached for repeat', name: 'navisense.voice'),
+          onError: (Object e) => log(
+            'Background cloud voice synthesis failed',
+            name: 'navisense.voice',
+            error: e,
+          ),
+        ),
+      );
+      log(
+        'Cloud voice slower than ${cloudVoiceWaitBudget.inMilliseconds}ms; '
+        'speaking cloud text via local voice now',
+        name: 'navisense.orchestrator',
+      );
     } on NaviFailure catch (e, st) {
       log(
         'Cloud TTS/WAV playback failed; speaking cloud text via local voice',
