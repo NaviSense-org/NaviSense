@@ -61,7 +61,7 @@ void main() {
     test('matches empty summary golden string', () {
       expect(
         formatter.format(SpatialSceneSummary.empty(ts)),
-        'Path looks clear. No objects detected.',
+        DeterministicSpatialFormatter.emptySceneMessage,
       );
     });
 

@@ -15,6 +15,11 @@ final class DeterministicSpatialFormatter {
   /// Creates a [DeterministicSpatialFormatter].
   const DeterministicSpatialFormatter();
 
+  /// Spoken when offline Stage 0 detects nothing.
+  static const String emptySceneMessage =
+      'Offline mode: I did not recognize any objects, but I cannot confirm '
+      'the path is clear. Move carefully.';
+
   /// Formats [summary] according to §2.6 rules.
   ///
   /// When [textOnly] is `true`, emits up to 2 `"Sign reads <TEXT>."` sentences
@@ -85,7 +90,9 @@ final class DeterministicSpatialFormatter {
 
     // Rule 4: Empty summary.
     if (sentences.isEmpty) {
-      return 'Path looks clear. No objects detected.';
+      // WHY: ML Kit finding nothing is not evidence the path is clear (it
+      // misses most real obstacles); never tell a blind user it is safe.
+      return emptySceneMessage;
     }
 
     return sentences.join(' ');

@@ -217,4 +217,31 @@ void main() {
       ]);
     });
   });
+
+  group('FirebaseGeminiReasoningClient.systemInstructionFor', () {
+    test('v1 uses left/ahead/right phrasing and never assumes clear', () {
+      final text = FirebaseGeminiReasoningClient.systemInstructionFor(
+        RemoteConfigService.defaultPromptTemplate,
+        'en',
+      );
+      expect(text, contains('left, ahead, or right'));
+      expect(text, contains('Only claim the path is clear'));
+      expect(text, contains('Language: en'));
+    });
+
+    test('v2 uses clock-face phrasing', () {
+      final text = FirebaseGeminiReasoningClient.systemInstructionFor(
+        RemoteConfigService.v2PromptTemplate,
+        'en',
+      );
+      expect(text, contains("12 o'clock"));
+      expect(text, isNot(contains('left, ahead, or right')));
+    });
+  });
+
+  test('RemoteConfigService defaults cloud model and template routing', () {
+    final service = RemoteConfigService();
+    expect(service.cloudModel, RemoteConfigService.defaultCloudModel);
+    expect(service.useServerTemplates, isFalse);
+  });
 }

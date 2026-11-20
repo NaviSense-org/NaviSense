@@ -84,7 +84,7 @@ Install the signed release APK from **GitHub Releases** (`v1.0.0-hackathon`) for
 
 ### 4. How to Watch the Live Remote Config Hot-Swap
 
-1. Open **Firebase Console -> Remote Config** for `navisense-hybrid`.
+1. Open **Firebase Console -> Remote Config** for your Firebase project (e.g. `navisense-23425`).
 2. Change `active_prompt_template` from `navisense_nav_prompt_v1` to `navisense_nav_prompt_v2` and click **Publish changes**.
 3. On a running online phone (no restart or APK rebuild), `FirebaseRemoteConfig.onConfigUpdated` logs `navisense.rc template=navisense_nav_prompt_v2` and announces `"Guidance style updated"`.
 4. Tap anywhere: guidance immediately switches to v2 clock-face phrasing (`"Chair at 12 o'clock, one step"`).

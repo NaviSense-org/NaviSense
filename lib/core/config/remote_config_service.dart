@@ -51,6 +51,19 @@ final class RemoteConfigService {
   /// Remote Config key acting as a kill-switch for Cloud TTS.
   static const String keyEnableCloudTts = 'enable_cloud_tts';
 
+  /// Remote Config key for the Tier 2 Gemini model ID.
+  static const String keyCloudModel = 'cloud_model';
+
+  /// Remote Config key: route Tier 2 through console Server Prompt Templates
+  /// instead of the direct Gemini client.
+  static const String keyUseServerTemplates = 'use_server_templates';
+
+  /// Default Tier 2 Gemini model (matches the official Android hybrid sample).
+  static const String defaultCloudModel = 'gemini-3.5-flash';
+
+  /// Server Prompt Templates are opt-in; their model is pinned in the console.
+  static const bool defaultUseServerTemplates = false;
+
   /// Default v1 Server Prompt Template ID.
   static const String defaultPromptTemplate = 'navisense_nav_prompt_v1';
 
@@ -131,6 +144,21 @@ final class RemoteConfigService {
     return rc.getBool(keyEnableCloudTts);
   }
 
+  /// Tier 2 Gemini model ID (for example `'gemini-3.5-flash'`).
+  String get cloudModel {
+    final rc = _remoteConfig;
+    if (rc == null) return defaultCloudModel;
+    final name = rc.getString(keyCloudModel).trim();
+    return name.isEmpty ? defaultCloudModel : name;
+  }
+
+  /// Whether Tier 2 should use console Server Prompt Templates.
+  bool get useServerTemplates {
+    final rc = _remoteConfig;
+    if (rc == null) return defaultUseServerTemplates;
+    return rc.getBool(keyUseServerTemplates);
+  }
+
   /// Applies settings and in-app defaults, then triggers a background fetch.
   ///
   /// Never blocks startup or throws when the device is offline.
@@ -151,6 +179,8 @@ final class RemoteConfigService {
         keyCloudTimeoutMs: defaultCloudTimeoutMs,
         keyTtsVoiceName: defaultTtsVoiceName,
         keyEnableCloudTts: defaultEnableCloudTts,
+        keyCloudModel: defaultCloudModel,
+        keyUseServerTemplates: defaultUseServerTemplates,
       });
       // WHY: Non-blocking startup per §2.9; offline launches keep defaults.
       unawaited(

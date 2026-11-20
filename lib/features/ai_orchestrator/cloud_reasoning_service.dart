@@ -47,10 +47,119 @@ final class FirebaseTemplateReasoningClient implements TemplateReasoningClient {
   }
 }
 
-/// Provides optional injectable [TemplateReasoningClient].
+/// Direct Firebase AI Logic Gemini client used by default for Tier 2.
+///
+/// WHY: Server Prompt Templates hard-code their model inside the Firebase
+/// console (the shipped ones referenced the non-existent `gemini-3-flash`), so
+/// a bad template silently broke every cloud request. This client keeps the
+/// v1/v2 guidance styles in code, takes the model ID from Remote Config
+/// (`cloud_model`), and disables extended thinking so short spoken answers
+/// come back fast and are never starved by thought tokens.
+final class FirebaseGeminiReasoningClient implements TemplateReasoningClient {
+  /// Creates a [FirebaseGeminiReasoningClient].
+  FirebaseGeminiReasoningClient({
+    required String Function() modelReader,
+    FirebaseAI? firebaseAi,
+  })  : _modelReader = modelReader,
+        _firebaseAi = firebaseAi;
+
+  final String Function() _modelReader;
+  final FirebaseAI? _firebaseAi;
+
+  /// Builds the system instruction for a whitelisted guidance style.
+  static String systemInstructionFor(String templateId, String locale) {
+    final style = templateId == RemoteConfigService.v2PromptTemplate
+        ? 'Use clock-face directions (12 o\'clock is straight ahead, 9 is left, '
+            '3 is right) and step counts (one step is about 0.7 m).'
+        : 'Give direction as left, ahead, or right and distance as very close, '
+            'a few steps, or far.';
+    return 'You are NaviSense, a calm spatial guide for a blind pedestrian. '
+        'Look at the photo from their chest-height camera. Reply in at most '
+        'two short spoken sentences. State the closest obstacle or hazard '
+        'first. $style Read safety-relevant signs verbatim. Only claim the '
+        'path is clear if you can actually see open walkable ground ahead. '
+        'Never describe colors or aesthetics unless safety-relevant. Never '
+        'speculate. Language: $locale.';
+  }
+
+  @override
+  Future<String?> generateContent(
+    String templateId, {
+    required Map<String, Object?> inputs,
+  }) async {
+    final ai = _firebaseAi ?? FirebaseAI.googleAI();
+    final locale = (inputs['locale'] as String?) ?? 'en';
+    final model = ai.generativeModel(
+      model: _modelReader(),
+      systemInstruction: Content.system(
+        systemInstructionFor(templateId, locale),
+      ),
+      generationConfig: GenerationConfig(
+        maxOutputTokens: 160,
+        thinkingConfig: ThinkingConfig.withThinkingLevel(
+          ThinkingLevel.minimal,
+        ),
+      ),
+    );
+
+    final parts = <Part>[
+      TextPart('On-device perception hints: ${inputs['scene'] ?? ''}'),
+    ];
+    final image = inputs['image'];
+    if (image is String) {
+      final comma = image.indexOf(',');
+      final b64 = comma >= 0 ? image.substring(comma + 1) : image;
+      parts.add(InlineDataPart('image/jpeg', base64Decode(b64)));
+    }
+    final response = await model.generateContent(<Content>[
+      Content.multi(parts),
+    ]);
+    return response.text;
+  }
+}
+
+/// Provides the injectable [TemplateReasoningClient] for Tier 2.
+///
+/// Uses [FirebaseGeminiReasoningClient] unless Remote Config
+/// `use_server_templates` is `true`.
 final templateReasoningClientProvider = Provider<TemplateReasoningClient>(
-  (ref) => FirebaseTemplateReasoningClient(),
+  (ref) {
+    final rc = ref.watch(remoteConfigServiceProvider);
+    final direct = FirebaseGeminiReasoningClient(
+      modelReader: () => rc.cloudModel,
+    );
+    final templates = FirebaseTemplateReasoningClient();
+    return _SwitchingReasoningClient(
+      useTemplates: () => rc.useServerTemplates,
+      templates: templates,
+      direct: direct,
+    );
+  },
 );
+
+/// Chooses templates vs direct Gemini per request so a Remote Config change
+/// takes effect without restarting the app.
+final class _SwitchingReasoningClient implements TemplateReasoningClient {
+  const _SwitchingReasoningClient({
+    required bool Function() useTemplates,
+    required TemplateReasoningClient templates,
+    required TemplateReasoningClient direct,
+  })  : _useTemplates = useTemplates,
+        _templates = templates,
+        _direct = direct;
+
+  final bool Function() _useTemplates;
+  final TemplateReasoningClient _templates;
+  final TemplateReasoningClient _direct;
+
+  @override
+  Future<String?> generateContent(
+    String templateId, {
+    required Map<String, Object?> inputs,
+  }) =>
+      (_useTemplates() ? _templates : _direct)
+          .generateContent(templateId, inputs: inputs);
+}
 
 /// Provides [CloudReasoningService] reading live template ID and timeout from
 /// Remote Config providers.
