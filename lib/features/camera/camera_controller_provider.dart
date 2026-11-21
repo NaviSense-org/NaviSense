@@ -80,14 +80,33 @@ final class CameraControllerNotifier extends AsyncNotifier<CameraController?>
           ? ResolutionPreset.medium
           : ResolutionPreset.medium;
 
-      final controller = CameraController(
-        backCamera,
-        preset,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.nv21,
-      );
+      // WHY: The camera plugin copies *every* frame (~30/s, ~0.5 MB each)
+      // into Dart even though Stage 0 samples ~1.4/s, producing ~15 MB/s of
+      // garbage and constant GC on low-end phones. Capping the session at
+      // 15 fps halves that; some devices reject fixed fps ranges, so fall
+      // back to the default rate rather than failing camera start.
+      CameraController build({int? fps}) => CameraController(
+            backCamera,
+            preset,
+            fps: fps,
+            enableAudio: false,
+            imageFormatGroup: ImageFormatGroup.nv21,
+          );
 
-      await controller.initialize();
+      var controller = build(fps: streamFps);
+      try {
+        await controller.initialize();
+      } on CameraException catch (e) {
+        if (_isPermissionError(e)) rethrow;
+        log(
+          'Camera rejected ${streamFps}fps; retrying with default rate',
+          name: 'navisense.camera',
+          error: e,
+        );
+        await controller.dispose();
+        controller = build();
+        await controller.initialize();
+      }
       if (!ref.mounted) {
         await controller.dispose();
         return null;
@@ -96,9 +115,7 @@ final class CameraControllerNotifier extends AsyncNotifier<CameraController?>
       _controller = controller;
       return controller;
     } on CameraException catch (e) {
-      if (e.code == 'CameraAccessDenied' ||
-          e.code == 'CameraAccessDeniedWithoutPrompt' ||
-          e.code == 'cameraPermission') {
+      if (_isPermissionError(e)) {
         throw CameraPermissionDeniedException(
           permanentlyDenied: e.code == 'CameraAccessDeniedWithoutPrompt',
         );
@@ -106,6 +123,14 @@ final class CameraControllerNotifier extends AsyncNotifier<CameraController?>
       throw CameraFailure(e.description ?? 'Failed to initialize camera');
     }
   }
+
+  /// Target camera session frame rate (see WHY in `_initializeCamera`).
+  static const int streamFps = 15;
+
+  static bool _isPermissionError(CameraException e) =>
+      e.code == 'CameraAccessDenied' ||
+      e.code == 'CameraAccessDeniedWithoutPrompt' ||
+      e.code == 'cameraPermission';
 
   /// Re-attempts camera initialization (for example after returning from Settings).
   Future<void> retry() async {
