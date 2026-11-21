@@ -5,8 +5,10 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import '../helpers/fake_connectivity.dart';
 import 'package:navisense/app.dart';
 import 'package:navisense/core/config/remote_config_service.dart';
+import 'package:navisense/core/connectivity/network_status.dart';
 import 'package:navisense/features/ai_orchestrator/nano_bridge.dart';
 import 'package:navisense/features/camera/camera_controller_provider.dart';
 import 'package:navisense/features/home/settings_screen.dart';
@@ -102,6 +104,9 @@ void main() {
   List<dynamic> buildOverrides() {
     return [
       remoteConfigServiceProvider.overrideWithValue(RemoteConfigService()),
+      connectivitySourceProvider.overrideWithValue(
+        const FakeConnectivitySource(),
+      ),
       cameraControllerProvider.overrideWithBuild((_, __) async => null),
       nanoBridgeProvider.overrideWithValue(nanoBridge),
       localTtsServiceProvider.overrideWithValue(

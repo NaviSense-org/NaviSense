@@ -3,11 +3,13 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:navisense/core/config/remote_config_service.dart';
 import 'package:navisense/core/connectivity/connectivity_probe.dart';
+import 'package:navisense/core/connectivity/network_status.dart';
 import 'package:navisense/core/errors/navi_failure.dart';
 import 'package:navisense/features/ai_orchestrator/ai_orchestrator.dart';
 import 'package:navisense/features/ai_orchestrator/cloud_reasoning_service.dart';
@@ -20,6 +22,8 @@ import 'package:navisense/features/voice/local_tts_service.dart';
 import 'package:navisense/features/voice/voice_player.dart';
 import 'package:navisense/features/voice/wav_cache.dart';
 import 'package:navisense/features/voice/wav_codec.dart';
+
+import '../helpers/fake_connectivity.dart';
 
 final class _MockGateway extends Mock
     implements OrchestratorPerceptionGateway {}
@@ -34,6 +38,18 @@ final class _MockCloudTtsClient extends Mock implements CloudTtsClient {}
 final class _MockTtsEngine extends Mock implements TtsEngine {}
 
 final class _MockAudioBackend extends Mock implements VoiceAudioBackend {}
+
+final class _StaticConnectivitySource implements ConnectivitySource {
+  const _StaticConnectivitySource(this.results);
+
+  final List<ConnectivityResult> results;
+
+  @override
+  Stream<List<ConnectivityResult>> get changes => const Stream.empty();
+
+  @override
+  Future<List<ConnectivityResult>> current() async => results;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -53,6 +69,7 @@ void main() {
   late StreamController<void> audioCompleteController;
   late bool isOffline;
   late List<String> announcements;
+  late int dnsLookups;
 
   final jpeg = Uint8List.fromList(<int>[0xFF, 0xD8, 0xFF]);
   final pcm = Uint8List(2048);
@@ -89,6 +106,7 @@ void main() {
     audioCompleteController = StreamController<void>.broadcast();
     isOffline = false;
     announcements = <String>[];
+    dnsLookups = 0;
 
     when(
       () => gateway.captureSnapshot(
@@ -153,6 +171,7 @@ void main() {
 
   ProviderContainer makeContainer({
     Duration cloudTimeout = const Duration(milliseconds: 1500),
+    ConnectivitySource connectivitySource = const FakeConnectivitySource(),
   }) {
     final wavCache = WavCache(directoryProvider: () async => tempDir);
     final localTts = LocalTtsService(engine: ttsEngine);
@@ -162,6 +181,7 @@ void main() {
     );
     final connectivity = ConnectivityProbe(
       lookup: (String _) async {
+        dnsLookups++;
         if (isOffline) {
           throw const SocketException('Airplane Mode');
         }
@@ -186,6 +206,7 @@ void main() {
         orchestratorPerceptionGatewayProvider.overrideWithValue(gateway),
         nanoBridgeProvider.overrideWithValue(nanoBridge),
         connectivityProbeProvider.overrideWithValue(connectivity),
+        connectivitySourceProvider.overrideWithValue(connectivitySource),
         cloudReasoningServiceProvider.overrideWithValue(cloudReasoning),
         wavCacheProvider.overrideWithValue(wavCache),
         cloudTtsServiceProvider.overrideWithValue(cloudTts),
@@ -301,6 +322,32 @@ void main() {
       expect(result.text, isNot(contains('clear')));
       verify(() => ttsEngine.speak(AiOrchestrator.perceptionFailedMessage))
           .called(1);
+    });
+
+    test(
+        '3c. Live connectivity stream offline -> Tier3 without DNS probe or '
+        'cloud call', () async {
+      final container = makeContainer(
+        connectivitySource: const _StaticConnectivitySource(
+          <ConnectivityResult>[ConnectivityResult.none],
+        ),
+      );
+      container.read(networkStatusProvider);
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(networkStatusProvider), NetworkStatus.offline);
+      dnsLookups = 0;
+
+      await container.read(aiOrchestratorProvider.notifier).describe();
+
+      final result = container.read(aiOrchestratorProvider).value!;
+      expect(result.tier, const Tier3Edge());
+      expect(dnsLookups, 0);
+      verifyNever(
+        () => templateClient.generateContent(
+          any(),
+          inputs: any(named: 'inputs'),
+        ),
+      );
     });
 
     test('4. Nano unavailable + online + success -> Tier2, playFile called',

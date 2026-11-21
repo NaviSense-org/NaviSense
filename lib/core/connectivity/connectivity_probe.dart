@@ -14,7 +14,7 @@ final connectivityProbeProvider = Provider<ConnectivityProbe>(
 
 /// Fast, cached DNS reachability probe (`2-architecture.md` §2.6).
 ///
-/// Checks `firebasevertexai.googleapis.com` with a 300 ms timeout and caches
+/// Checks `firebasevertexai.googleapis.com` with a 1.2 s timeout and caches
 /// the result for 5 s so offline devices fall through to Tier 3 immediately.
 final class ConnectivityProbe {
   /// Creates a [ConnectivityProbe].
@@ -22,7 +22,11 @@ final class ConnectivityProbe {
     Clock? clock,
     DnsLookup? lookup,
     this.probeHost = defaultProbeHost,
-    this.timeout = const Duration(milliseconds: 300),
+    // WHY: 300 ms was routinely exceeded by a cold DNS lookup on mobile data
+    // or a phone hotspot, marking real online users offline. Airplane Mode
+    // still fails instantly (no interface), so this costs offline users
+    // nothing.
+    this.timeout = const Duration(milliseconds: 1200),
     this.cacheTtl = const Duration(seconds: 5),
   })  : _clock = clock ?? const SystemClock(),
         _lookup = lookup ?? InternetAddress.lookup;
@@ -33,7 +37,7 @@ final class ConnectivityProbe {
   /// Target host for DNS lookups.
   final String probeHost;
 
-  /// Hard timeout per DNS probe (300 ms per `4-code-standards.md` §4.7).
+  /// Hard timeout per DNS probe.
   final Duration timeout;
 
   /// Cache duration for recent connectivity probes (5 s per §2.6).
@@ -72,6 +76,27 @@ final class ConnectivityProbe {
     _lastCheckedMs = nowMs;
     _lastOffline = offline;
     return offline;
+  }
+
+  /// One uncached reachability check with a caller-chosen [timeout]; updates
+  /// the cache on completion so the next [isOffline] call is instant.
+  Future<bool> isReachable({
+    Duration timeout = const Duration(milliseconds: 2500),
+  }) async {
+    var reachable = false;
+    try {
+      final addresses = await _lookup(probeHost).timeout(timeout);
+      reachable = addresses.isNotEmpty;
+    } on TimeoutException {
+      reachable = false;
+    } on SocketException {
+      reachable = false;
+    } on OSError {
+      reachable = false;
+    }
+    _lastCheckedMs = _clock.nowMs();
+    _lastOffline = !reachable;
+    return reachable;
   }
 
   /// Clears the cached reachability value.

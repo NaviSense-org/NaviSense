@@ -91,7 +91,8 @@ void main() {
           inputs: any(named: 'inputs'),
         ),
       ).thenAnswer((_) async {
-        await Future<void>.delayed(const Duration(milliseconds: 120));
+        // Far beyond the 50 ms budget so the test can't flake on a busy CI.
+        await Future<void>.delayed(const Duration(seconds: 2));
         return 'Too late';
       });
 

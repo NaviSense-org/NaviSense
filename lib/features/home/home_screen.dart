@@ -57,8 +57,7 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
     _listenCameraStream();
     _listenNetworkChanges();
     _listenOrchestratorSideEffects(settings);
-    final isOffline =
-        ref.watch(networkStatusProvider) == NetworkStatus.offline;
+    final isOffline = ref.watch(networkStatusProvider) == NetworkStatus.offline;
     _scheduleStartupChecks(settings);
 
     if (cameraAsync.hasError &&

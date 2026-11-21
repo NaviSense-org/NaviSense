@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:navisense/core/connectivity/connectivity_probe.dart';
@@ -60,11 +61,29 @@ final networkStatusProvider =
 /// check, because "connected to Wi-Fi" does not mean "has internet".
 final class NetworkStatusNotifier extends Notifier<NetworkStatus> {
   StreamSubscription<List<ConnectivityResult>>? _sub;
+  Timer? _recheck;
   int _generation = 0;
+  bool _hasInterface = true;
+  List<ConnectivityResult> _lastResults = const <ConnectivityResult>[];
+
+  /// How often reachability is re-checked while an interface is up but the
+  /// internet looked unreachable (captive portal, slow first DNS, dead
+  /// hotspot), so a transient failure never leaves the app stuck offline.
+  @visibleForTesting
+  static Duration recheckInterval = const Duration(seconds: 5);
+
+  /// `true` only when the OS reports no network interface at all. This is the
+  /// one definitive offline signal the orchestrator may trust to skip the
+  /// cloud without probing.
+  bool get noInterface => !_hasInterface;
 
   @override
   NetworkStatus build() {
     final source = ref.watch(connectivitySourceProvider);
+    ref.onDispose(() {
+      _sub?.cancel();
+      _recheck?.cancel();
+    });
     try {
       _sub = source.changes.listen(
         (results) => unawaited(_evaluate(results)),
@@ -74,7 +93,6 @@ final class NetworkStatusNotifier extends Notifier<NetworkStatus> {
     } on MissingPluginException {
       return NetworkStatus.unknown;
     }
-    ref.onDispose(() => _sub?.cancel());
 
     unawaited(
       source.current().then(_evaluate).catchError((Object e) {
@@ -84,26 +102,53 @@ final class NetworkStatusNotifier extends Notifier<NetworkStatus> {
     return NetworkStatus.unknown;
   }
 
+  /// Records that a cloud request just succeeded (proof of connectivity).
+  void markReachable() {
+    if (!ref.mounted || !_hasInterface) return;
+    _recheck?.cancel();
+    _set(NetworkStatus.online, reason: 'cloud request succeeded');
+  }
+
   Future<void> _evaluate(List<ConnectivityResult> results) async {
     final generation = ++_generation;
+    _recheck?.cancel();
+    _lastResults = results;
     final probe = ref.read(connectivityProbeProvider);
     // WHY: Any interface change invalidates the cached reachability result
     // the orchestrator relies on.
     probe.resetCache();
 
-    final hasInterface =
-        results.any((r) => r != ConnectivityResult.none) && results.isNotEmpty;
-    final next = hasInterface
-        ? (await probe.isOffline(forceRefresh: true)
-            ? NetworkStatus.offline
-            : NetworkStatus.online)
-        : NetworkStatus.offline;
-
-    if (!ref.mounted || generation != _generation) return;
-    if (state != next) {
-      log('network status=${next.name} interfaces=$results',
-          name: 'navisense.net');
-      state = next;
+    _hasInterface =
+        results.isNotEmpty && results.any((r) => r != ConnectivityResult.none);
+    if (!_hasInterface) {
+      _set(NetworkStatus.offline, reason: 'no interface $results');
+      return;
     }
+
+    // WHY: One slow lookup is not proof of being offline; retry once before
+    // telling a user they've lost the network.
+    var reachable = await probe.isReachable();
+    if (!reachable && ref.mounted && generation == _generation) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (!ref.mounted || generation != _generation) return;
+      reachable = await probe.isReachable();
+    }
+    if (!ref.mounted || generation != _generation) return;
+
+    _set(
+      reachable ? NetworkStatus.online : NetworkStatus.offline,
+      reason: 'interfaces=$results reachable=$reachable',
+    );
+    if (!reachable) {
+      _recheck = Timer(recheckInterval, () {
+        if (ref.mounted) unawaited(_evaluate(_lastResults));
+      });
+    }
+  }
+
+  void _set(NetworkStatus next, {required String reason}) {
+    if (state == next) return;
+    log('network status=${next.name} ($reason)', name: 'navisense.net');
+    state = next;
   }
 }

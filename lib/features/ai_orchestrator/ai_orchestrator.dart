@@ -293,6 +293,7 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
             .read(cloudReasoningServiceProvider)
             .reason(jpeg: jpeg, summary: hint, textOnly: textOnly);
         slowNotice.cancel();
+        ref.read(networkStatusProvider.notifier).markReachable();
         if (_isStale(myId)) return;
 
         _logTiming(
@@ -431,11 +432,15 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
   }
 
   Future<bool> _probeOffline() async {
-    // WHY: The live connectivity stream already knows when the link is down;
-    // skip the DNS probe and go straight to on-device guidance.
-    if (ref.read(networkStatusProvider) == NetworkStatus.offline) return true;
+    // WHY: Only "no interface at all" is definitive enough to skip the cloud
+    // without probing. A failed reachability check may be a slow DNS on a
+    // live link, so it is re-verified per tap instead of trusted blindly.
+    final network = ref.read(networkStatusProvider.notifier);
+    if (network.noInterface) return true;
     try {
-      return await ref.read(connectivityProbeProvider).isOffline();
+      final offline = await ref.read(connectivityProbeProvider).isOffline();
+      if (!offline) network.markReachable();
+      return offline;
     } catch (_) {
       // Unknown connectivity: attempt the cloud; its own timeout bounds it.
       return false;

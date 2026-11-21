@@ -5,8 +5,10 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import '../helpers/fake_connectivity.dart';
 import 'package:navisense/app.dart';
 import 'package:navisense/core/config/remote_config_service.dart';
+import 'package:navisense/core/connectivity/network_status.dart';
 import 'package:navisense/core/theme/navi_colors.dart';
 import 'package:navisense/features/ai_orchestrator/ai_orchestrator.dart';
 import 'package:navisense/features/ai_orchestrator/models/guidance_result.dart';
@@ -73,6 +75,9 @@ void main() {
       ProviderScope(
         overrides: [
           remoteConfigServiceProvider.overrideWithValue(RemoteConfigService()),
+          connectivitySourceProvider.overrideWithValue(
+            const FakeConnectivitySource(),
+          ),
           cameraControllerProvider.overrideWithBuild((_, __) async => null),
           nanoBridgeProvider.overrideWithValue(nanoBridge),
           localTtsServiceProvider.overrideWithValue(
@@ -116,7 +121,13 @@ void main() {
   testWidgets('TelemetryPill renders exact label and color per tier', (
     WidgetTester tester,
   ) async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(
+      overrides: [
+        connectivitySourceProvider.overrideWithValue(
+          const FakeConnectivitySource(),
+        ),
+      ],
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(
@@ -200,6 +211,9 @@ void main() {
       ProviderScope(
         overrides: [
           remoteConfigServiceProvider.overrideWithValue(RemoteConfigService()),
+          connectivitySourceProvider.overrideWithValue(
+            const FakeConnectivitySource(),
+          ),
           cameraControllerProvider.overrideWithBuild(
             (_, __) async => throw const CameraPermissionDeniedException(
               permanentlyDenied: true,
@@ -261,6 +275,9 @@ void main() {
       ProviderScope(
         overrides: [
           remoteConfigServiceProvider.overrideWithValue(RemoteConfigService()),
+          connectivitySourceProvider.overrideWithValue(
+            const FakeConnectivitySource(),
+          ),
           cameraControllerProvider.overrideWithBuild((_, __) async => null),
           nanoBridgeProvider.overrideWithValue(nanoBridge),
           localTtsServiceProvider.overrideWithValue(
