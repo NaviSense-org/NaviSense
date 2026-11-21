@@ -44,6 +44,7 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    _offlineAnnounceTimer?.cancel();
     _heartbeatTimer?.cancel();
     super.dispose();
   }
@@ -237,6 +238,16 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
   static const String onlineNotice =
       'Back online. Full scene descriptions are available again.';
 
+  /// How long the link must stay down before the offline notice is spoken.
+  ///
+  /// WHY: Android briefly reports "no network" while radios rebind (app start,
+  /// Wi-Fi/mobile handover). Announcing those blips ("You're offline" then
+  /// "Back online" seconds later) is noise for a blind user.
+  static const Duration offlineAnnounceDelay = Duration(seconds: 3);
+
+  bool _announcedOffline = false;
+  Timer? _offlineAnnounceTimer;
+
   void _listenNetworkChanges() {
     ref.listen<NetworkStatus>(networkStatusProvider, (
       NetworkStatus? prev,
@@ -244,10 +255,23 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
     ) {
       if (prev == next) return;
       if (next == NetworkStatus.offline) {
-        unawaited(_announceWhenIdle(offlineNotice));
-      } else if (next == NetworkStatus.online &&
-          prev == NetworkStatus.offline) {
-        unawaited(_announceWhenIdle(onlineNotice));
+        _offlineAnnounceTimer?.cancel();
+        _offlineAnnounceTimer = Timer(offlineAnnounceDelay, () {
+          if (!mounted ||
+              ref.read(networkStatusProvider) != NetworkStatus.offline) {
+            return;
+          }
+          _announcedOffline = true;
+          unawaited(_announceWhenIdle(offlineNotice));
+        });
+      } else if (next == NetworkStatus.online) {
+        _offlineAnnounceTimer?.cancel();
+        // Only confirm recovery if the user was actually told they were
+        // offline.
+        if (_announcedOffline) {
+          _announcedOffline = false;
+          unawaited(_announceWhenIdle(onlineNotice));
+        }
       }
     });
   }
