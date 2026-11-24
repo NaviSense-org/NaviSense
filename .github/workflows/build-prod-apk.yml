@@ -45,7 +45,8 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          # AGP 9.1's lint calls JDK 21 APIs; the app still compiles to Java 17 bytecode.
+          java-version: '21'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -71,25 +72,36 @@ jobs:
           sed -i 's/-XX:MaxMetaspaceSize=4G/-XX:MaxMetaspaceSize=1G/g' android/gradle.properties
 
       - name: Build APK (Split per ABI)
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/split-debug-info
 
-      # Each ABI split zipped on its own (not bundled together). Include the
-      # build channel in both the APK and archive names so production builds
-      # cannot overwrite internal assets on the rolling release.
+      # Build a second, universal APK. Move the split APKs and their debug info
+      # aside first so the second build cannot overwrite or merge them.
+      - name: Build universal APK
+        run: |
+          mkdir -p build/prod-apks
+          mv build/app/outputs/flutter-apk/app-*-release.apk build/prod-apks/
+          mv build/split-debug-info build/split-debug-info-abi
+          flutter build apk --release --obfuscate --split-debug-info=build/split-debug-info
+
+      # Raw APKs go on the release plus a zip of each ABI and the universal APK.
+      # The channel is in every name so internal builds cannot overwrite production assets.
       - name: Label and zip production APKs
         run: |
-          cd build/app/outputs/flutter-apk
-          for apk in app-*-release.apk; do
+          mv build/app/outputs/flutter-apk/app-release.apk build/prod-apks/
+          cd build/prod-apks
+          for apk in app-*-release.apk app-release.apk; do
             abi="${apk#app-}"
             abi="${abi%-release.apk}"
+            [ "$apk" = "app-release.apk" ] && abi="universal"
             labeled_apk="navisense-prod-${abi}.apk"
             mv "$apk" "$labeled_apk"
             zip "${labeled_apk%.apk}.zip" "$labeled_apk"
-            mv "${labeled_apk%.apk}.zip" "$GITHUB_WORKSPACE/"
+            mv "$labeled_apk" "${labeled_apk%.apk}.zip" "$GITHUB_WORKSPACE/"
           done
+          ls -lh "$GITHUB_WORKSPACE"/navisense-prod-*
 
       # Replaces this build's files on the single rolling `latest` release.
       - name: Publish to latest release
         uses: ./.github/actions/publish-latest
         with:
-          files: navisense-prod-*.zip
+          files: navisense-prod-*.apk navisense-prod-*.zip
