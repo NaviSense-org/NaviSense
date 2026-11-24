@@ -323,19 +323,27 @@ final class CameraService {
 
     final wasStreaming = handle.isStreamingImages;
     if (wasStreaming) {
-      await stopStream(handle);
+      // WHY: Some camera HALs never complete stopImageStream; bound it so a
+      // tap can't hang silently.
+      try {
+        await stopStream(handle).timeout(_captureTimeout);
+      } on TimeoutException {
+        throw const TimeoutFailure('camera stream stop > 2000ms');
+      }
     }
 
     String? capturedPath;
     try {
       capturedPath = await handle.takePicturePath().timeout(_captureTimeout);
-      return await _nativeBridge.compressJpeg(
-        path: capturedPath,
-        maxEdge: maxEdge,
-        quality: quality,
-      );
+      return await _nativeBridge
+          .compressJpeg(
+            path: capturedPath,
+            maxEdge: maxEdge,
+            quality: quality,
+          )
+          .timeout(_captureTimeout);
     } on TimeoutException {
-      throw const TimeoutFailure('camera capture > 2000ms');
+      throw const TimeoutFailure('camera capture/compress > 2000ms');
     } on CameraException catch (e) {
       throw CameraFailure(e.description ?? 'Snapshot capture failed');
     } finally {
@@ -354,7 +362,7 @@ final class CameraService {
       final savedOnFrame = _activeOnFrame;
       if (wasStreaming && savedOnFrame != null && handle.isInitialized) {
         try {
-          await startStream(handle, savedOnFrame);
+          await startStream(handle, savedOnFrame).timeout(_captureTimeout);
         } catch (e, st) {
           log(
             'Failed to restart camera stream after snapshot',

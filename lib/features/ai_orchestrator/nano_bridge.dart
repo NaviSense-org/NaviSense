@@ -206,11 +206,24 @@ final class NanoBridge implements NanoBridgeClient {
   final EventChannel _downloadChannel;
   final Duration _generateTimeout;
 
+  /// Upper bound for a native Nano availability check.
+  static const Duration statusTimeout = Duration(seconds: 3);
+
   @override
   Future<NanoStatus> getStatus() async {
     try {
-      final raw = await _methodChannel.invokeMethod<String>('getStatus');
+      // WHY: On devices without a working AICore service, checkStatus can
+      // never return; an unbounded wait would stall every tap behind it.
+      final raw = await _methodChannel
+          .invokeMethod<String>('getStatus')
+          .timeout(statusTimeout);
       return parseStatus(raw);
+    } on TimeoutException {
+      log(
+        'Nano getStatus timed out; treating as unavailable',
+        name: 'navisense.nano',
+      );
+      return NanoStatus.unavailable;
     } on PlatformException catch (e, st) {
       log(
         'Nano getStatus returned error; treating as unavailable',

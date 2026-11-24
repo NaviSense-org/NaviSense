@@ -14,6 +14,7 @@ import 'package:navisense/features/ai_orchestrator/cloud_reasoning_service.dart'
 import 'package:navisense/features/ai_orchestrator/deterministic_spatial_formatter.dart';
 import 'package:navisense/features/ai_orchestrator/models/guidance_result.dart';
 import 'package:navisense/features/ai_orchestrator/nano_bridge.dart';
+import 'package:navisense/features/ai_orchestrator/pipeline_status.dart';
 import 'package:navisense/features/camera/camera_controller_provider.dart';
 import 'package:navisense/features/camera/camera_service.dart';
 import 'package:navisense/features/mlkit_perception/mlkit_perception_service.dart';
@@ -142,13 +143,73 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
   int _requestId = 0;
 
   @override
-  FutureOr<GuidanceResult?> build() => null;
+  FutureOr<GuidanceResult?> build() {
+    // WHY: A result is ready as soon as state settles, even though speech is
+    // still playing; drop the progress label then, not when speech ends.
+    listenSelf((
+      AsyncValue<GuidanceResult?>? prev,
+      AsyncValue<GuidanceResult?> next,
+    ) {
+      if (prev != null && prev.isLoading && !next.isLoading) {
+        ref.read(pipelineStatusProvider.notifier).finish();
+      }
+    });
+    return null;
+  }
+
+  /// Spoken when the pipeline fails in an unexpected way.
+  static const String unexpectedFailureMessage =
+      'Something went wrong. Please try again.';
 
   /// Describes the current scene through the 3-tier hybrid pipeline.
-  Future<void> describe() => _runPipeline(textOnly: false);
+  Future<void> describe() => _guardedPipeline(textOnly: false);
 
   /// Runs the 3-tier hybrid pipeline prioritizing visible signage/text.
-  Future<void> readText() => _runPipeline(textOnly: true);
+  Future<void> readText() => _guardedPipeline(textOnly: true);
+
+  Future<void> _guardedPipeline({required bool textOnly}) async {
+    final myId = _requestId + 1; // _runPipeline claims this id first.
+    // WHY: Show immediately that the press registered, before any await.
+    _status.begin(textOnly ? 'Reading text…' : 'Looking ahead…');
+    try {
+      await _runPipeline(textOnly: textOnly);
+    } catch (e, st) {
+      _issue(myId, 'Unexpected error', e);
+      // WHY: Callers fire-and-forget; an unexpected error would otherwise
+      // vanish and leave a blind user in silence with a stuck "Analyzing".
+      log(
+        'Pipeline failed unexpectedly (textOnly=$textOnly)',
+        name: 'navisense.orchestrator',
+        error: e,
+        stackTrace: st,
+      );
+      if (_isStale(myId)) return;
+      const result = GuidanceResult(
+        text: unexpectedFailureMessage,
+        tier: Tier3Edge(),
+        stage0Ms: 0,
+        inferenceMs: 0,
+      );
+      try {
+        await _deliverLocalVoice(result, myId, errorStack: st);
+      } catch (_) {
+        ref.read(semanticsAnnouncerProvider)(unexpectedFailureMessage);
+      }
+    } finally {
+      if (!_isStale(myId)) _status.finish();
+    }
+  }
+
+  PipelineStatusNotifier get _status =>
+      ref.read(pipelineStatusProvider.notifier);
+
+  void _stage(int myId, String stage) {
+    if (!_isStale(myId)) _status.stage(stage);
+  }
+
+  void _issue(int myId, String area, Object error) {
+    if (!_isStale(myId)) _status.issue(area, error);
+  }
 
   /// Replays the most recent [GuidanceResult] via cache or local TTS.
   Future<void> repeat() async {
@@ -169,6 +230,7 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
   /// Stops active voice output and cancels any in-flight reasoning result.
   Future<void> stop() async {
     _requestId++;
+    _status.clear();
     await ref.read(voicePlayerProvider).stop();
   }
 
@@ -186,6 +248,7 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
 
     final gateway = ref.read(orchestratorPerceptionGatewayProvider);
     final Uint8List jpeg;
+    _stage(myId, 'Taking photo…');
     try {
       // WHY: Upload size dominates on real mobile networks. Scene description
       // only needs a 512 px frame (~2.3x fewer pixels, ~30-40 KB); reading
@@ -195,6 +258,7 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
           : await gateway.captureSnapshot(maxEdge: 512, quality: 65);
     } on NaviFailure catch (e, st) {
       if (_isStale(myId)) return;
+      _issue(myId, 'Camera', e);
       const fallbackResult = GuidanceResult(
         text: 'Camera unavailable. Please try again.',
         tier: Tier3Edge(),
@@ -213,7 +277,8 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
     // tap). Only Stage 0 is CPU/RAM-heavy, and MlKitPerceptionService
     // serializes its own passes, so this never runs two ML Kit jobs at once
     // on 3 GB devices.
-    final summaryFuture = _resolveSummary(gateway, jpeg);
+    _stage(myId, 'Checking what this phone supports…');
+    final summaryFuture = _resolveSummary(gateway, jpeg, myId);
     final nanoStatusFuture = _currentNanoStatus();
     final offlineFuture = _probeOffline();
 
@@ -222,6 +287,10 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
     if (_isStale(myId)) return;
 
     if (nanoStatus == NanoStatus.available) {
+      _stage(
+        myId,
+        textOnly ? 'Reading text on device…' : 'Describing on device…',
+      );
       final stage0 = await summaryFuture;
       if (_isStale(myId)) return;
       final summary = stage0.summary;
@@ -258,6 +327,7 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
         await _deliverLocalVoice(result, myId);
         return;
       } on NaviFailure catch (e, st) {
+        _issue(myId, 'On-device AI', e);
         log(
           'Tier 1 Nano failed; failing over',
           name: 'navisense.orchestrator',
@@ -269,10 +339,15 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
     }
 
     // 2. Try Tier 2 (Cloud Gemini + Cloud TTS) when online.
+    _stage(myId, 'Checking connection…');
     final offline = await offlineFuture;
     if (_isStale(myId)) return;
 
     if (!offline) {
+      _stage(
+        myId,
+        textOnly ? 'Reading text with cloud AI…' : 'Asking cloud AI…',
+      );
       // WHY: Gemini sees the photo itself; Stage 0 is only a hint, so the
       // cloud call must not queue behind a slow ML Kit pass.
       final hint = await _cloudHint(summaryFuture);
@@ -310,6 +385,7 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
         return;
       } on NaviFailure catch (e, st) {
         slowNotice.cancel();
+        _issue(myId, 'Cloud AI', e);
         log(
           'Tier 2 cloud reasoning failed; failing over to Tier 3',
           name: 'navisense.orchestrator',
@@ -320,6 +396,20 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
       if (_isStale(myId)) return;
     }
 
+    // WHY: When we land in offline detection, say why the better tiers were
+    // skipped so an unsupported phone or dead link is visible on screen.
+    if (nanoStatus != NanoStatus.available) {
+      _issue(
+        myId,
+        'On-device AI',
+        'not available on this phone (${nanoStatus.name})',
+      );
+    }
+    if (offline) _issue(myId, 'Cloud AI', 'no internet connection');
+    _stage(
+      myId,
+      textOnly ? 'Reading text offline…' : 'Using offline detection…',
+    );
     final stage0 = await summaryFuture;
     if (_isStale(myId)) return;
     final summary = stage0.summary;
@@ -389,10 +479,12 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
   Future<({SpatialSceneSummary summary, bool failed})> _resolveSummary(
     OrchestratorPerceptionGateway gateway,
     Uint8List jpeg,
+    int myId,
   ) async {
     try {
       return (summary: await gateway.resolveFreshSummary(jpeg), failed: false);
     } catch (e, st) {
+      _issue(myId, 'On-device detection', e);
       // WHY: §4.7.3 — Perception failure is non-fatal; continue with empty summary.
       log(
         'Stage 0 perception failed; continuing with empty summary',
@@ -586,6 +678,7 @@ final class AiOrchestrator extends AsyncNotifier<GuidanceResult?> {
       await ref.read(voicePlayerProvider).speakLocal(result.text);
     } on NaviFailure catch (e, st) {
       if (_isStale(myId)) return;
+      _issue(myId, 'Voice', e);
       log(
         'All voice playback paths failed; falling back to TalkBack announce',
         name: 'navisense.orchestrator',

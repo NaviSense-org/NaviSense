@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:navisense/core/theme/navi_colors.dart';
 import 'package:navisense/features/camera/camera_controller_provider.dart';
 
-/// Full-bleed aspect-correct dimmed camera preview excluded from TalkBack
+/// Full-bleed aspect-correct camera preview excluded from TalkBack
 /// semantics so screen readers never announce "image".
 final class CameraPreviewLayer extends ConsumerWidget {
   /// Creates a [CameraPreviewLayer].
@@ -24,29 +24,11 @@ final class CameraPreviewLayer extends ConsumerWidget {
             if (controller == null || !controller.value.isInitialized) {
               return const SizedBox.expand();
             }
-            return Stack(
-              fit: StackFit.expand,
-              children: <Widget>[
-                _CoverCameraPreview(
-                  controller: controller,
-                  isPortrait: isPortrait,
-                ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: <Color>[
-                        NaviColors.navyDeep.withValues(alpha: 0.88),
-                        NaviColors.navyDeep.withValues(alpha: 0.54),
-                        NaviColors.navyDeep.withValues(alpha: 0.58),
-                        NaviColors.navyDeep.withValues(alpha: 0.92),
-                      ],
-                      stops: const <double>[0.0, 0.24, 0.72, 1.0],
-                    ),
-                  ),
-                ),
-              ],
+            // WHY: Show the raw camera feed untinted; overlays carry their own
+            // backgrounds for legibility.
+            return _CoverCameraPreview(
+              controller: controller,
+              isPortrait: isPortrait,
             );
           },
           loading: () => const SizedBox.expand(),

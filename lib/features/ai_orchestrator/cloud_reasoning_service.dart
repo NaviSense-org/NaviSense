@@ -54,6 +54,9 @@ final class FirebaseTemplateReasoningClient implements TemplateReasoningClient {
 /// Non-template input key selecting image detail (`'low'` | `'high'`).
 const String detailInputKey = '_detail';
 
+/// Non-template input key selecting the task (`'describe'` | `'read'`).
+const String taskInputKey = '_task';
+
 /// Direct Firebase AI Logic Gemini client used by default for Tier 2.
 ///
 /// WHY: Server Prompt Templates hard-code their model inside the Firebase
@@ -74,7 +77,18 @@ final class FirebaseGeminiReasoningClient implements TemplateReasoningClient {
   final FirebaseAI? _firebaseAi;
 
   /// Builds the system instruction for a whitelisted guidance style.
-  static String systemInstructionFor(String templateId, String locale) {
+  static String systemInstructionFor(
+    String templateId,
+    String locale, {
+    bool readText = false,
+  }) {
+    if (readText) {
+      return 'You are NaviSense, reading text aloud for a blind person. Look '
+          'at the photo from their camera and read all clearly visible text '
+          'verbatim, most prominent first (signs, labels, screens, documents). '
+          'Do not describe the scene or obstacles. If there is no readable '
+          'text, say exactly: No readable text found. Language: $locale.';
+    }
     final style = templateId == RemoteConfigService.v2PromptTemplate
         ? 'Use clock-face directions (12 o\'clock is straight ahead, 9 is left, '
             '3 is right) and step counts (one step is about 0.7 m).'
@@ -100,15 +114,16 @@ final class FirebaseGeminiReasoningClient implements TemplateReasoningClient {
     final ai =
         _firebaseAi ?? FirebaseAI.googleAI(useLimitedUseAppCheckTokens: true);
     final locale = (inputs['locale'] as String?) ?? 'en';
+    final readText = inputs[taskInputKey] == 'read';
     final model = ai.generativeModel(
       model: _modelReader(),
       systemInstruction: Content.system(
-        systemInstructionFor(templateId, locale),
+        systemInstructionFor(templateId, locale, readText: readText),
       ),
       generationConfig: GenerationConfig(
         // WHY: Two spoken sentences fit in ~60 tokens; a tight cap bounds
-        // generation time on slow links.
-        maxOutputTokens: 120,
+        // generation time on slow links. Reading text needs more room.
+        maxOutputTokens: readText ? 300 : 120,
         // WHY: Low media resolution cuts image tokens (faster prefill, less
         // server time); text reading keeps the model default for legibility.
         mediaResolution: inputs[detailInputKey] == 'high'
@@ -179,7 +194,9 @@ final class _SwitchingReasoningClient implements TemplateReasoningClient {
           ? _templates.generateContent(
               templateId,
               // Server templates validate inputs against their schema.
-              inputs: Map<String, Object?>.of(inputs)..remove(detailInputKey),
+              inputs: Map<String, Object?>.of(inputs)
+                ..remove(detailInputKey)
+                ..remove(taskInputKey),
             )
           : _direct.generateContent(templateId, inputs: inputs);
 }
@@ -243,6 +260,7 @@ final class CloudReasoningService {
       'locale': locale,
       // Read by FirebaseGeminiReasoningClient only (stripped for templates).
       detailInputKey: textOnly ? 'high' : 'low',
+      taskInputKey: textOnly ? 'read' : 'describe',
     };
 
     try {

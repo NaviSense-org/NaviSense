@@ -12,6 +12,7 @@ import 'package:navisense/core/utils/haptics.dart';
 import 'package:navisense/core/utils/navi_log.dart';
 import 'package:navisense/features/ai_orchestrator/ai_orchestrator.dart';
 import 'package:navisense/features/ai_orchestrator/models/guidance_result.dart';
+import 'package:navisense/features/ai_orchestrator/pipeline_status.dart';
 import 'package:navisense/features/camera/camera_controller_provider.dart';
 import 'package:navisense/features/camera/camera_service.dart';
 import 'package:navisense/features/camera/widgets/camera_preview_layer.dart';
@@ -54,6 +55,7 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
     final settings = ref.watch(settingsProvider);
     final orchestratorAsync = ref.watch(aiOrchestratorProvider);
     final cameraAsync = ref.watch(cameraControllerProvider);
+    final pipelineStatus = ref.watch(pipelineStatusProvider);
 
     _listenCameraStream();
     _listenNetworkChanges();
@@ -75,6 +77,7 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     final captionText = _resolveCaptionText(orchestratorAsync);
+    final showIssues = pipelineStatus.hasIssues && pipelineStatus.stage == null;
     final isVoiceUnavailableError = orchestratorAsync.hasError &&
         orchestratorAsync.error is GuidanceVoiceFailedException;
     final disableAnimations = MediaQuery.disableAnimationsOf(context);
@@ -110,7 +113,8 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
                   final reservedBottom = (textScale > 1.5 ? 140.0 : 108.0) +
                       (captionText != null
                           ? (textScale > 1.5 ? 160.0 : 180.0)
-                          : 0.0);
+                          : 0.0) +
+                      (showIssues ? 150.0 : 0.0);
                   final maxTopHeight = math.max(
                     120.0,
                     constraints.maxHeight - reservedBottom,
@@ -148,11 +152,17 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
                       Expanded(
                         child: Center(
                           child: _AnalyzingIndicator(
-                            visible: orchestratorAsync.isLoading,
+                            visible: orchestratorAsync.isLoading ||
+                                pipelineStatus.stage != null,
+                            label: pipelineStatus.stage ?? 'Analyzing…',
                             disableAnimations: disableAnimations,
                           ),
                         ),
                       ),
+                      if (showIssues) ...<Widget>[
+                        _PipelineIssuesCard(issues: pipelineStatus.issues),
+                        const SizedBox(height: 12),
+                      ],
                       if (captionText != null) ...<Widget>[
                         _GuidanceCaption(
                           text: captionText,
@@ -425,10 +435,12 @@ final class _HomeScreenState extends ConsumerState<HomeScreen> {
 final class _AnalyzingIndicator extends StatelessWidget {
   const _AnalyzingIndicator({
     required this.visible,
+    required this.label,
     required this.disableAnimations,
   });
 
   final bool visible;
+  final String label;
   final bool disableAnimations;
 
   @override
@@ -452,13 +464,16 @@ final class _AnalyzingIndicator extends StatelessWidget {
                       width: 1.5,
                     ),
                   ),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       spacing: 12,
                       children: <Widget>[
-                        SizedBox(
+                        const SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
@@ -468,10 +483,10 @@ final class _AnalyzingIndicator extends StatelessWidget {
                         ),
                         Flexible(
                           child: Text(
-                            'Analyzing…',
-                            maxLines: 1,
+                            label,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: NaviColors.cream,
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
@@ -483,6 +498,59 @@ final class _AnalyzingIndicator extends StatelessWidget {
                   ),
                 )
               : const SizedBox.shrink(),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shows what failed during the latest request (camera, on-device AI, cloud,
+/// voice) so problems on unsupported phones are visible instead of silent.
+final class _PipelineIssuesCard extends StatelessWidget {
+  const _PipelineIssuesCard({required this.issues});
+
+  final List<String> issues;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Semantics(
+        container: true,
+        label: 'Problem details. ${issues.join('. ')}',
+        excludeSemantics: true,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: NaviColors.navySurface.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: NaviColors.errorRed, width: 1.5),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 12,
+              children: <Widget>[
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: NaviColors.errorRed,
+                  size: 24,
+                ),
+                Expanded(
+                  child: Text(
+                    issues.join('\n'),
+                    maxLines: 5,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: NaviColors.cream,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
